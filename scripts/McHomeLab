@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+
+# Scripts dir helps us figure out where we are.
+SCRIPT=$(realpath ${BASH_SOURCE[0]})
+SCRIPTSDIR=$( cd "$(dirname ${SCRIPT})" ; pwd );
+
+
+#Variables for all things important.
+BINDIR="${HOME}/bin"
+PROJECTHOME=$(dirname ${SCRIPTSDIR})
+    PYPROJECT="${PROJECTHOME}/pyproject.toml"
+    PROJECT=$(basename ${PROJECTHOME})
+        FASTLOADER="${PROJECTHOME}/scripts/${PROJECT}"
+        BINFASTLOAD="${BINDIR}/${PROJECT}"
+    VENVDIR="${PROJECTHOME}/.venv"
+PYAPPCONF="${HOME}/.pyappconf"
+
+# Load the project!
+echo "Loading Environment for ${PROJECT}"
+echo "  Project Home: '${PROJECTHOME}'"
+cd ${PROJECTHOME}
+GITSTATUS=$(git config --get user.email)
+if [ -z "${GITSTATUS}" ]; then
+    if [ -f ${PYAPPCONF} ]; then
+        echo "  Activating git configs from ${PYAPPCONF}"
+        source ${PYAPPCONF} || echo "Error loading ${PYAPPCONF}"
+        git config user.email ${GITEMAIL} && git config user.name ${GITNAME};
+    else
+        echo "Warning! Can't find ${PYAPPCONF} file!"
+        echo "Please manually set git configs for local repo:"
+        echo "    git config user.email \$github.username@users.noreply.github.com"
+        echo "    git config user.name \$firstname \$lastname"
+        exit 1
+    fi;
+else
+    echo "  Welcome back $(git config --get user.name) (${GITSTATUS})!"
+fi
+
+if [ ! -f ${PYPROJECT} ]; then
+    echo "  ** '${PYPROJECT}' is missing! This probably is a new project. **"
+    poetry init --no-interaction --author "$(git config --get user.name)" --name "${APPNAME}"
+    poetry config --local virtualenvs.in-project true
+
+    # This is specific to this project because its Ansible
+    # Leave an extra space for my sanity.
+    cat >> ${PYPROJECT} <<- EOM
+
+[tool.poetry]
+package-mode = false
+EOM
+
+fi
+
+VENV=$(which python | grep ${PROJECT});
+if [ -z "${VENV}" ]; then
+    echo "  Activating Virtual Environment"
+    cd ${PROJECTHOME}
+    if [ ! -d ${VENVDIR} ]; then
+        poetry install
+    fi;
+    source "${VENVDIR}/bin/activate"
+fi;
+
+if [ ! -L ${BINFASTLOAD} ]; then
+    echo "  Softlinking ${FASTLOADER} into ${BINDIR}";
+    chmod u+x ${FASTLOADER} && ln -s ${FASTLOADER} ${BINFASTLOAD}
+fi;
+
+code ${PROJECTHOME}

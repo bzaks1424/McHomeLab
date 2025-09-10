@@ -1,3 +1,6 @@
+# VMware VMs
+# File must be named vms.y(a?)ml or vmware_vms.y(a?)ml
+
 ---
 plugin: vmware.vmware.vms
 hostname: vcenter.example.com

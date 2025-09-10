@@ -44,6 +44,9 @@ fi
 if [ ! -f ${PYPROJECT} ]; then
     echo "  ** '${PYPROJECT}' is missing! This probably is a new project. **"
     poetry init --no-interaction --author "$(git config --get user.name)" --name "${APPNAME}"
+    poetry add ansible ansible-core
+    poetry add pyopenssl@>=24.2.1
+    poetry add $(cat ${HOME}/.ansible/collections/ansible_collections/vmware/vmware/requirements.txt)
 
     # This is specific to this project because its Ansible
     # Leave an extra space for my sanity.

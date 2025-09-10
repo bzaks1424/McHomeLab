@@ -15,7 +15,8 @@ So I have to come up with everything that matters per build - I should *only* ne
 • Storage LUN
 • ISO path
 
-~~ The gist *should* look something like this: ~~
+~~The gist *should* look something like this:~~
+
 I'm just going to update this as I understand more and more so the flow is clear to me.
 1. New hot server file is committed
 2. GHA (or whatever) kicks off Ansible playbook for $svr 
@@ -23,15 +24,18 @@ I'm just going to update this as I understand more and more so the flow is clear
 4. Ansible kicks off "site.yml" which goes through the entire site and validates all the things:
    * For each "hostname.yml" in host_vars (for my use case):
      * Check inventory - Does it exist?
-       * If not - create it.
-     * Apply 
-~~ 3. Ideally - I can use dynamic inventory to determine whether or not to run terraform step ~~
-~~ 4. Terraform has cloud-init step that can be used for LVM, IP, Hostname, Python3, etc... ~~
-~~ 5. After server is online Ansible drives all configuration ~~
-~~ 6. Cron for scheduling update runs or CI/CD tool ~~
+       * If not - create it via terraform (cloud-init for IP, DNS, hostname, LVM, SSH keys, User, etc..)
+     * Check Inventory again to update existing inventory
+     * Apply playbook for all configs / settings / etc.. (NTP)
 
-Getting started:
-~~ I think first I need to get Ansible up and able to run terraform against my vcenter. Ideally I can get a check against that dynamic inventory. ~~
+Tasks:
+- [x] VMware Inventory Plugin Working
+- [ ] Build out common specs and apply to existing inventory. If I'm going to screw up things; screw up things I'm replacing.
+- [ ] Build out terraform to generate server based on hostname.yml vars.
+- [ ] ....
+- [ ] ????
+- [ ] Profit!
+
 
 
 

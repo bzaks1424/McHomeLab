@@ -1,0 +1,6 @@
+---
+plugin: vmware.vmware.vms
+hostname: vcenter.example.com
+username: admin@vsphere.local
+password: REDACTED
+validate_certs: False

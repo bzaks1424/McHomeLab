@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+echo "============== FASTLOADER for Ansible Dev Environment =============="
+echo "This project has specifically been designed around Python 3.11 and"
+echo "all the things necessary for Ansible, Terraform to connect to the "
+echo "VMware Python SDK for vSphere 7"
+
 # Scripts dir helps us figure out where we are.
 SCRIPT=$(realpath ${BASH_SOURCE[0]})
 SCRIPTSDIR=$( cd "$(dirname ${SCRIPT})" ; pwd );
@@ -39,7 +44,6 @@ fi
 if [ ! -f ${PYPROJECT} ]; then
     echo "  ** '${PYPROJECT}' is missing! This probably is a new project. **"
     poetry init --no-interaction --author "$(git config --get user.name)" --name "${APPNAME}"
-    poetry config --local virtualenvs.in-project true
 
     # This is specific to this project because its Ansible
     # Leave an extra space for my sanity.
@@ -51,13 +55,15 @@ EOM
 
 fi
 
-VENV=$(which python | grep ${PROJECT});
+VENV=$(which python3 | grep ${PROJECT});
 if [ -z "${VENV}" ]; then
-    echo "  Activating Virtual Environment"
     cd ${PROJECTHOME}
     if [ ! -d ${VENVDIR} ]; then
+        echo "  Creating Virtual Environment"
+        poetry config --local virtualenvs.in-project true
         poetry install
     fi;
+    echo "  Activating Virtual Environment"
     source "${VENVDIR}/bin/activate"
 fi;
 

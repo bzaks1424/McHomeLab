@@ -28,13 +28,48 @@ I'm just going to update this as I understand more and more so the flow is clear
      * Check Inventory again to update existing inventory
      * Apply playbook for all configs / settings / etc.. (NTP)
 
-Tasks:
+## TODO for McHomeLab:
+
+### IoT
+- [ ] Move IoT Gateway IP to .1
+- [ ] Migrate homeassist to .254
+- [ ] Move printer to .253
+
+### Ansible / Terraform
 - [x] VMware Inventory Plugin Working
 - [ ] Build out common specs and apply to existing inventory. If I'm going to screw up things; screw up things I'm replacing.
+  - [ ] SSH Keys
+  - [ ] NTP Settings
+  - [ ] sudo settings
+  - [ ] update-alternative --config editor
+  - [ ] syslog
 - [ ] Build out terraform to generate server based on hostname.yml vars.
-- [ ] ....
-- [ ] ????
-- [ ] Profit!
+- [ ] Use playbook to spin up pxe esxi server (pxesxi.lab? or in util?)
+- [ ] Build Ansible to configure ESXi 
+  - [ ] Enable SSH
+  - [ ] VSS Port Groups
+  - [ ] vMotion enabled
+  - [ ] Scratch LUNs
+  - [ ] NTP
+  - [ ] syslog
+- [ ] Create util.lab.example.com
+
+### MGMT-P
+- [ ] Set router.lab.example.com DNS
+- [ ] Migrate Synology IP
+- [ ] Build new ESXi Servers via PXE/Ansible
+- [ ] Update DHCP scope for MGMT-P to .10-.30
+
+### DMZ
+- [ ] Build new Plex Server
+  - [ ] Update Port Forwarding
+- [ ] Build new Unifi Server
+  - [ ] Migrate to new one - it's a new URI internally - externally the same.
+  - [ ] Update port forwarding to the new one once internal is stabilized.
+
+### MGMT-V
+- [ ] Delete vCenter01
+- [ ] Install vcenter.lab on .2 (playbook validating DNS in Unifi?)
 
 
 

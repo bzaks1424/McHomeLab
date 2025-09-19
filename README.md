@@ -33,7 +33,19 @@ I'm just going to update this as I understand more and more so the flow is clear
 ### IoT
 - [ ] Move IoT Gateway IP to .1
 - [ ] Migrate homeassist to .254
+  - [ ] DNS: ha.example.com
 - [ ] Move printer to .253
+  - [ ] DNS: printer.example.com
+- [ ] Move Internet Facing Devices to high range
+  - [ ] Workout Roku     (.242)
+  - [ ] MBR Roku         (.243)
+  - [ ] Den Roku         (.244)
+  - [ ] Bedroom Display  (.245)
+  - [ ] MBath Speaker    (.246)
+  - [ ] Kitchen Speaker  (.247)
+  - [ ] Office Speaker   (.248)
+  - [ ] Basement Speaker (.249)
+- [ ] Block internet access for any non-internet approved devices. (245-254)
 
 ### Ansible / Terraform
 - [x] VMware Inventory Plugin Working
@@ -44,7 +56,7 @@ I'm just going to update this as I understand more and more so the flow is clear
   - [ ] update-alternative --config editor
   - [ ] syslog
 - [ ] Build out terraform to generate server based on hostname.yml vars.
-- [ ] Use playbook to spin up pxe esxi server (pxesxi.lab? or in util?)
+- [ ] Use playbook to spin up pxe esxi server (pxesxi.example.com? or in util?)
 - [ ] Build Ansible to configure ESXi 
   - [ ] Enable SSH
   - [ ] VSS Port Groups
@@ -52,27 +64,27 @@ I'm just going to update this as I understand more and more so the flow is clear
   - [ ] Scratch LUNs
   - [ ] NTP
   - [ ] syslog
-- [ ] Create util.lab.example.com
+- [ ] Create util.example.com
 
 ### MGMT-P
-- [ ] Set router.lab.example.com DNS
+- [ ] Set router.example.com DNS
 - [ ] Migrate Synology IP
+  - [ ] DNS: synology.example.com
 - [ ] Build new ESXi Servers via PXE/Ansible
 - [ ] Update DHCP scope for MGMT-P to .10-.30
 
 ### DMZ
 - [ ] Build new Plex Server
   - [ ] Update Port Forwarding
+  - [ ] DNS: plex.example.com
 - [ ] Build new Unifi Server
   - [ ] Migrate to new one - it's a new URI internally - externally the same.
   - [ ] Update port forwarding to the new one once internal is stabilized.
+  - [ ] Split Horizon DNS: unifi.example.com (public / 192.168.255.)
 
 ### MGMT-V
 - [ ] Delete vCenter01
-- [ ] Install vcenter.lab on .2 (playbook validating DNS in Unifi?)
-
-
-
+- [ ] Install vcenter on .2 (playbook validating DNS in Unifi?)
 
 
 ```

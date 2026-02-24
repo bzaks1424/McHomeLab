@@ -1,0 +1,8 @@
+---
+btf_debug: false
+btf_role_role_action_type_manager: "roles/{{ role_name }}/tasks/{{ role_action }}_{{ hostvars[inventory_hostname].provision.type }}_{{ hostvars[inventory_hostname].provision.manager }}.yml"
+btf_role_role_action_type_all: "roles/{{ role_name }}/tasks/{{ role_action }}_{{ hostvars[inventory_hostname].provision.type }}_all.yml"
+btf_role_role_action_all_manager: "roles/{{ role_name }}/tasks/{{ role_action }}_all_{{ hostvars[inventory_hostname].provision.manager }}.yml"
+btf_role_role_action_all_all: "roles/{{ role_name }}/tasks/{{ role_action }}_all_all.yml"
+btf_role_role_action: "roles/{{ role_name }}/tasks/{{ role_action }}.yml"
+###############################################################################################################################################################

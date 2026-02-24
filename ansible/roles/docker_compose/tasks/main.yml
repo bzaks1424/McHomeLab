@@ -1,0 +1,17 @@
+---
+- name: "Create compose directory"
+  ansible.builtin.file:
+    path: "{{ docker_compose_dir }}"
+    state: directory
+    mode: "{{ docker_compose_dir_mode }}"
+
+- name: "Template docker-compose.yml"
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ docker_compose_dir }}/docker-compose.yml"
+    mode: "{{ docker_compose_file_mode }}"
+
+- name: "Deploy compose stack"
+  community.docker.docker_compose_v2:
+    project_src: "{{ docker_compose_dir }}"
+    state: present

@@ -1,0 +1,6 @@
+---
+# defaults file for  {{ role_name }}
+docker_keyring_path_default: /etc/apt/keyrings
+docker_keyring_dir_mode_default: '0755'
+docker_file_mode_default: '0644'
+###############################################################################################################################################################

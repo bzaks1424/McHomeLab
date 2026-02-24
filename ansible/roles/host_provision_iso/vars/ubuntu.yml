@@ -1,0 +1,21 @@
+---
+# vars file for {{ role_name }}
+host_provision_iso_release_version: "24.04"
+host_provision_iso_minor_release_version: "3"
+host_provision_iso_full_release_version: "{{ host_provision_iso_release_version }}.{{ host_provision_iso_minor_release_version }}"
+host_provision_iso_file_name: "ubuntu-{{ host_provision_iso_full_release_version }}-live-server-amd64.iso"
+host_provision_iso_base_url: "https://releases.ubuntu.com/{{ host_provision_iso_release_version }}"
+host_provision_iso_url: "{{ host_provision_iso_base_url }}/{{ host_provision_iso_file_name }}"
+host_provision_iso_path: "{{ host_provision_iso_iso_dir }}/{{ host_provision_iso_file_name }}"
+host_provision_iso_mode: "{{ host_provision_iso_mode_default }}"
+host_provision_iso_checksum: "sha256:{{ host_provision_iso_base_url }}/SHA256SUMS"
+host_provision_iso_tmp_dir: "{{ iso_tmp_dir.path }}"
+host_provision_iso_tmp_iso_dir: "{{ iso_tmp_iso_dir }}"
+host_provision_iso_nocloud_dir: "{{ host_provision_iso_tmp_iso_dir }}/nocloud"
+host_provision_iso_grub_dir: "{{ host_provision_iso_tmp_iso_dir }}/boot/grub"
+host_provision_iso_nocloud_metadata: "nocloud/meta-data"
+host_provision_iso_nocloud_userdata: "nocloud/user-data"
+host_provision_iso_boot_grubcfg: "boot/grub/grub.cfg"
+host_provision_iso_custom_iso_name: "{{ inventory_hostname }}.{{ host_provision_iso_file_name }}"
+host_provision_iso_custom_iso_path: "{{ host_provision_iso_iso_dir }}/{{ host_provision_iso_custom_iso_name }}"
+###############################################################################################################################################################

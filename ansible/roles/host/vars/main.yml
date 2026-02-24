@@ -1,0 +1,24 @@
+---
+# vars file for {{ role_name }}
+host_os: "{{ hostvars[inventory_hostname].provision.hardware.os }}"
+host_fqdn: "{{ hostvars[inventory_hostname].provision.validate.host | default(hostvars[inventory_hostname].ansible_host) }}"
+host_validate_port: "{{ hostvars[inventory_hostname].provision.validate.port }}"
+host_provision_method: "{{ hostvars[inventory_hostname].provision.method }}"
+host_should_reprovision: "{{ hostvars[inventory_hostname].provision.reprovision }}"
+host_iso_mount_dir: "{{ hostvars[inventory_hostname].provision.manager_infra.iso_mount_dir }}"
+host_provision_role: "host_provision_{{ host_provision_method }}"
+host_cpus: "{{ hostvars[inventory_hostname].provision.hardware.cpus }}"
+host_ram_mb: "{{ hostvars[inventory_hostname].provision.hardware.ram_mb }}"
+host_disks: "{{ hostvars[inventory_hostname].provision.hardware.disks }}"
+host_networks: "{{ hostvars[inventory_hostname].provision.hardware.networks | json_query('[].{name: name, device_type: type}') }}"
+host_manager_infra: "{{ hostvars[inventory_hostname].provision.manager_infra }}"
+host_iso4cd_path: "{{ host_iso_mount_dir }}/{{ host_provision_iso_custom_iso_name | default('I_SHOULD_NOT_BE_HERE') }}" # Null pointer in PXE mode
+host_provision_method_is_iso: "{{ host_provision_method | lower == 'iso' }}"
+host_nfs_mounts: "{{ hostvars[inventory_hostname].provision.mounts | default([]) | selectattr('type', 'eq', 'nfs') | list }}"
+host_ssh_known_hosts_path: "{{ lookup('ansible.builtin.env', 'HOME') + '/.ssh/known_hosts' }}"
+host_ssh_public_key_path: "{{ ansible_ssh_private_key_file }}.pub"
+host_docker_image: "{{ hostvars[inventory_hostname].provision.hardware.image | default('') }}"
+host_docker_name: "{{ hostvars[inventory_hostname].provision.hardware.name | default('') }}"
+host_docker_ports: "{{ hostvars[inventory_hostname].provision.hardware.ports | default([]) }}"
+host_docker_volumes: "{{ hostvars[inventory_hostname].provision.hardware.volumes | default([]) }}"
+###############################################################################################################################################################

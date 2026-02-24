@@ -1,0 +1,12 @@
+---
+# vars file for {{ role_name }}
+apt_template_base: "etc/apt/apt.conf.d/proxy"
+apt_template_src: "{{ apt_template_base }}.j2"
+apt_template_dest: /{{ apt_template_base }}
+apt_template_mode: "0644"
+apt_proxy_protocol: "{{ ext_apt_proxy_protocol | default(apt_proxy_protocol_default) }}"
+apt_proxy_host: "{{ ext_apt_proxy_host | default(apt_proxy_host_default) }}"
+apt_proxy_port: "{{ ext_apt_proxy_port | default(apt_proxy_port_default) }}"
+apt_proxy_check_timeout: 10
+apt_proxy_check_delay: 1
+###############################################################################################################################################################

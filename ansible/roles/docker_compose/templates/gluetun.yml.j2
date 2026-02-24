@@ -1,0 +1,44 @@
+{# Gluetun infrastructure service template #}
+{% set gluetun = docker_compose_infra_services.gluetun %}
+{% set config = gluetun.config %}
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      VPN_SERVICE_PROVIDER: "{{ config.vpn_provider }}"
+      VPN_TYPE: "{{ config.vpn_type }}"
+      OPENVPN_USER: "{{ config.vpn_user }}"
+      OPENVPN_PASSWORD: "{{ config.vpn_password }}"
+{% if config.server_countries is defined %}
+      SERVER_COUNTRIES: "{{ config.server_countries }}"
+{% endif %}
+      FIREWALL_OUTBOUND_SUBNETS: "{{ config.firewall_outbound_subnets }}"
+{% if docker_compose_gluetun_tunneled | length > 0 %}
+    ports:
+{% for tun_name, tun_svc in docker_compose_gluetun_tunneled.items() %}
+{% if tun_svc.traefik is defined and tun_svc.traefik != false %}
+{# Tunneled service ports exposed on gluetun for traefik to reach #}
+      - "{{ tun_svc.traefik.port }}:{{ tun_svc.traefik.port }}"
+{% endif %}
+{% endfor %}
+    labels:
+      - "traefik.enable=true"
+{% for tun_name, tun_svc in docker_compose_gluetun_tunneled.items() %}
+{% if tun_svc.traefik is defined and tun_svc.traefik != false %}
+      - "traefik.http.routers.{{ tun_name }}.rule={{ tun_svc.traefik.rule }}"
+      - "traefik.http.routers.{{ tun_name }}.entrypoints=websecure"
+      - "traefik.http.routers.{{ tun_name }}.tls=true"
+      - "traefik.http.routers.{{ tun_name }}.tls.certresolver=step-ca"
+      - "traefik.http.services.{{ tun_name }}.loadbalancer.server.port={{ tun_svc.traefik.port }}"
+{% endif %}
+{% endfor %}
+{% endif %}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "https://ipinfo.io"]
+      interval: 30s
+      timeout: 10s
+      retries: 5

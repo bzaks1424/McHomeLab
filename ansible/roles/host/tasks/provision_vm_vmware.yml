@@ -1,0 +1,79 @@
+---
+# https://docs.ansible.com/projects/ansible/latest/collections/community/vmware/vmware_guest_module.html
+- name: "Branching logic on host_provision_method {{ host_provision_method }}"
+  when: host_provision_method_is_iso
+  block:
+    - name: "Set CD Type {{ host_provision_method }}"
+      ansible.builtin.set_fact:
+        host_provision_cdrom_type: "{{ host_provision_method }}"
+    - name: "Set ISO Path {{ host_iso4cd_path }}"
+      ansible.builtin.set_fact:
+        host_iso4cd_path: "{{ host_iso4cd_path }}"
+- name: "Initialize values for ISO details"
+  when: not host_provision_method_is_iso
+  block:
+    - name: "Set CD Type"
+      ansible.builtin.set_fact:
+        host_provision_cdrom_type: "none"
+    - name: "Set ISO Path"
+      ansible.builtin.set_fact:
+        host_iso4cd_path: "" # This needs to be below the above to prevent overwriting something good
+- name: "Create new VM and attach ISO {{ host_provision_iso_custom_iso_name }}"
+  delegate_to: localhost
+  community.vmware.vmware_guest:
+    hostname: "{{ vmware_vcenter_hostname }}"
+    username: "{{ vmware_vcenter_username }}"
+    password: "{{ vmware_vcenter_password }}"
+    validate_certs: "{{ vmware_vcenter_validate_certs }}"
+    ###########################################################################################################################################################
+    name: "{{ inventory_hostname }}"
+    state: poweredon # Start in powered off state for initial OS install
+    cluster: "{{ host_manager_infra.cluster }}"
+    datacenter: "{{ host_manager_infra.datacenter }}"
+    guest_id: "{{ host_manager_infra.guest_id }}"
+    folder: "{{ host_manager_infra.folder }}"
+    # --- HARDWARE CONFIGURATION ---
+    hardware:
+      memory_mb: "{{ host_ram_mb }}"
+      num_cpus: "{{ host_cpus }}"
+    cdrom:
+      - controller_number: 0
+        unit_number: 0
+        controller_type: "sata" # Harrrrd Coding 11/20/2025
+        state: present
+        type: "{{ host_provision_cdrom_type }}"
+        iso_path: "{{ host_iso4cd_path }}"
+    # --- PRIMARY DISK CONFIGURATION ---
+    disk: "{{ host_disks }}"
+    # --- NETWORK CONFIGURATION ---
+    networks: "{{ host_networks }}"
+- name: "ISO Method Exclusive: Wait for PowerOff, Disconnect CD, Reboot"
+  when: host_provision_method_is_iso
+  block:
+    - name: "Wait VM Power State Powered Off {{ inventory_hostname }}"
+      delegate_to: localhost
+      register: host_vm_info
+      vmware.vmware.guest_info:
+        hostname: "{{ vmware_vcenter_hostname }}"
+        username: "{{ vmware_vcenter_username }}"
+        password: "{{ vmware_vcenter_password }}"
+        validate_certs: "{{ vmware_vcenter_validate_certs }}"
+        name: "{{ inventory_hostname }}"
+      until: host_vm_info.guests[0].hw_power_status == "poweredOff"
+      delay: 60
+      retries: 60
+    - name: "Discconect CD-ROM on {{ inventory_hostname }}"
+      delegate_to: localhost
+      community.vmware.vmware_guest:
+        hostname: "{{ vmware_vcenter_hostname }}"
+        username: "{{ vmware_vcenter_username }}"
+        password: "{{ vmware_vcenter_password }}"
+        validate_certs: "{{ vmware_vcenter_validate_certs }}"
+        name: "{{ inventory_hostname }}"
+        cdrom:
+          - controller_number: 0
+            unit_number: 0
+            controller_type: "sata" # Harrrrd Coding 11/20/2025
+            state: present
+            type: "none"
+###############################################################################################################################################################

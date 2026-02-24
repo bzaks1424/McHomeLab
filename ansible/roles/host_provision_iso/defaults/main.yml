@@ -1,0 +1,8 @@
+---
+# defaults file for provision-iso-ubuntu
+host_provision_iso_mode_default: '0644'
+host_provision_iso_template_mode_default: '0755'
+host_provision_iso_proxy_protocol_default: "http"
+host_provision_iso_proxy_host_default: "localhost"
+host_provision_iso_proxy_port_default: "3142"
+###############################################################################################################################################################

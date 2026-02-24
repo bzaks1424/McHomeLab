@@ -1,0 +1,26 @@
+---
+# roles/${role}/${role_action}_${type}_${manager}.yml
+#
+# I'm going to check if the role path exists as I might* not be the only person
+# using this - and I like good error messages.
+- name: "Import Best Task File {{ btf_role_role_action_type_manager }}"
+  when: btf_debug | default(false)
+  ansible.builtin.debug:
+    msg: "{{ lookup('ansible.builtin.first_found', files) }}"
+  vars:
+    files:
+      - "{{ btf_role_role_action_type_manager }}"
+      - "{{ btf_role_role_action_type_all }}"
+      - "{{ btf_role_role_action_all_manager }}"
+      - "{{ btf_role_role_action_all_all }}"
+      - "{{ btf_role_role_action }}"
+- name: "Import Best Task File"
+  ansible.builtin.include_tasks: "{{ lookup('ansible.builtin.first_found', files) }}"
+  vars:
+    files:
+      - "{{ btf_role_role_action_type_manager }}"
+      - "{{ btf_role_role_action_type_all }}"
+      - "{{ btf_role_role_action_all_manager }}"
+      - "{{ btf_role_role_action_all_all }}"
+      - "{{ btf_role_role_action }}"
+###############################################################################################################################################################

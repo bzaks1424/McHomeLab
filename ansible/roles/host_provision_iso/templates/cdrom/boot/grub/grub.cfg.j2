@@ -1,0 +1,7 @@
+set timeout=1
+
+menuentry "Install Ubuntu For {{ inventory_hostname }}" {{ '{' }}
+    set gfxpayload=keep
+    linux  /casper/vmlinuz quiet autoinstall ds=nocloud\;s=/cdrom/nocloud/ ---
+    initrd /casper/initrd
+{{ '}' }}

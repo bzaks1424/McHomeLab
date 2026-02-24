@@ -1,0 +1,7 @@
+---
+# defaults file for  {{ role_name }}
+apt_proxy_protocol_default: "http"
+apt_proxy_host_default: "localhost"
+apt_proxy_port_default: "3142"
+apt_template_mode_default: "0644"
+###############################################################################################################################################################

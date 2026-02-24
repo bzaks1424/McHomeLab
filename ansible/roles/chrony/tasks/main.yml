@@ -1,0 +1,27 @@
+---
+# tasks file for {{ role_name }}
+- name: "Install package: {{ role_name }}"
+  ansible.builtin.apt:
+    name: "{{ role_name }}"
+    state: present
+    update_cache: true
+#
+# TODO - eventually some sort a connectivity check
+#
+- name: "Configure Chrony and Restart"
+  # when: ""
+  # Some sort of successful connectivity check
+  notify: "Restart {{ chrony_service_name }}"
+  block:
+    - name: "Remove pool entries default in chrony configuration"
+      ansible.builtin.lineinfile:
+        path: "{{ chrony_conf_file }}"
+        regexp: '^pool' # Regular expression to match the line to remove
+        state: absent
+    - name: "Deploy Chrony Conf Template"
+      ansible.builtin.template:
+        src: "{{ chrony_template_src }}"
+        dest: "{{ chrony_template_dest }}"
+        mode: "{{ chrony_template_mode }}"
+        backup: true
+###############################################################################################################################################################

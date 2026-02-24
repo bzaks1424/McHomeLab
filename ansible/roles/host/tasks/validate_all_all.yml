@@ -1,0 +1,5 @@
+# This exists because I don't want to "validate" or "provision" containers from the controller host.
+---
+- name: "Debug Print Out"
+  ansible.builtin.debug:
+    msg: "Skipping the Validation step on {{ inventory_hostname }}"

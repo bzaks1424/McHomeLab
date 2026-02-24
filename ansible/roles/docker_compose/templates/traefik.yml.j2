@@ -1,0 +1,32 @@
+{# Traefik infrastructure service template #}
+{% set traefik = docker_compose_infra_services.traefik %}
+{% set config = traefik.config %}
+  traefik:
+    image: traefik:latest
+    restart: unless-stopped
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+{% for ep_name, ep_port in config.entrypoints.items() %}
+      - "--entrypoints.{{ ep_name }}.address=:{{ ep_port }}"
+{% endfor %}
+      - "--certificatesresolvers.step-ca.acme.caserver={{ config.acme_ca }}"
+      - "--certificatesresolvers.step-ca.acme.email={{ config.acme_email }}"
+      - "--certificatesresolvers.step-ca.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.step-ca.acme.tlschallenge=true"
+    ports:
+{% for ep_name, ep_port in config.entrypoints.items() %}
+      - "{{ ep_port }}:{{ ep_port }}"
+{% endfor %}
+      - "8080:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "traefik-certs:/letsencrypt"
+{% if config.depends_on is defined %}
+    depends_on:
+{% for dep_name, dep_config in config.depends_on.items() %}
+      {{ dep_name }}:
+        condition: {{ dep_config.condition }}
+{% endfor %}
+{% endif %}

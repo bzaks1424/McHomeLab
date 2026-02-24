@@ -74,5 +74,5 @@ if [ ! -L ${BINFASTLOAD} ]; then
     echo "  Softlinking ${FASTLOADER} into ${BINDIR}";
     chmod u+x ${FASTLOADER} && ln -s ${FASTLOADER} ${BINFASTLOAD}
 fi;
-
+export ANSIBLE_CONFIG="${PROJECTHOME}/ansible/ansible.cfg"
 code ${PROJECTHOME}

@@ -1,0 +1,17 @@
+- name: "Install / Configure Docker"
+  ansible.builtin.include_role:
+    name: "docker"
+- name: "Validate folders for Docker volumes"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "{{ host_folder_mode_default }}"
+  loop: "{{ host_docker_volumes }}"
+- name: "Create docker container {{ host_docker_name }}"
+  community.docker.docker_container:
+    name: "{{ host_docker_name }}"
+    image: "{{ host_docker_image }}"
+    state: started
+    restart_policy: unless-stopped
+    ports: "{{ host_docker_ports }}"
+    volumes: "{{ host_docker_volumes }}"

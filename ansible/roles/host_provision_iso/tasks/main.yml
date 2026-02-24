@@ -1,0 +1,50 @@
+---
+- name: "Import OS Specific variables"
+  ansible.builtin.include_vars:
+    file: "{{ host_provision_iso_os }}.yml"
+- name: "Set Fact Globally: host_provision_iso_custom_iso_name {{ host_provision_iso_custom_iso_name }}"
+  ansible.builtin.set_fact:
+    host_provision_iso_custom_iso_name: "{{ host_provision_iso_custom_iso_name }}"
+- name: "Do we already have an ISO? {{ host_provision_iso_custom_iso_path }}"
+  ansible.builtin.stat:
+    path: "{{ host_provision_iso_custom_iso_path }}"
+  register: host_provision_iso_custom_iso_stat
+- name: "Generate new custom ISO for {{ inventory_hostname }}"
+  when: not host_provision_iso_custom_iso_stat.stat.exists
+  block:
+    - name: "Go Get the ISO"
+      # no delegate_to
+      ansible.builtin.include_role:
+        name: "iso"
+      vars:
+        iso_file_name: "{{ host_provision_iso_file_name }}"
+        iso_url: "{{ host_provision_iso_url }}"
+        iso_dest: "{{ host_provision_iso_path }}"
+        iso_mode: "{{ host_provision_iso_mode }}"
+        iso_checksum: "{{ host_provision_iso_checksum }}"
+    - name: "Create directories for AutoInstall"
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "{{ host_provision_iso_template_mode_default }}"
+      loop:
+        - "{{ host_provision_iso_nocloud_dir }}"
+        - "{{ host_provision_iso_grub_dir }}"
+    - name: "Install Config Templates"
+      ansible.builtin.template:
+        src: "cdrom/{{ item }}.j2"
+        dest: "{{ host_provision_iso_tmp_iso_dir }}/{{ item }}"
+        mode: "{{ host_provision_iso_template_mode_default }}"
+      loop:
+        - "{{ host_provision_iso_nocloud_metadata }}"
+        - "{{ host_provision_iso_nocloud_userdata }}"
+        - "{{ host_provision_iso_boot_grubcfg }}"
+    - name: "Import xorriso variables"
+      ansible.builtin.include_vars:
+        file: xorriso.yml # 11.19.2025 - we never look here again. I promise you don't want to see this.
+    - name: "Generate new ISO {{ host_provision_iso_custom_iso_path }}"
+      ansible.builtin.command:
+        cmd: "{{ host_provision_iso_xorriso_cmd }}"
+      register: host_provision_iso_xorriso_results
+      changed_when: host_provision_iso_xorriso_results.rc == 0
+###############################################################################################################################################################

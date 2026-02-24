@@ -1,0 +1,13 @@
+---
+host_provision_iso_xorriso_1: "xorriso -as mkisofs -r -V 'Ubuntu Custom Install' -o {{ host_provision_iso_custom_iso_path }}"
+host_provision_iso_xorriso_2: "--grub2-mbr {{ host_provision_iso_tmp_dir }}/BOOT/1-Boot-NoEmul.img -partition_offset 16 --mbr-force-bootable"
+host_provision_iso_xorriso_3: "-append_partition 2 0xEF {{ host_provision_iso_tmp_dir }}/BOOT/2-Boot-NoEmul.img -appended_part_as_gpt"
+host_provision_iso_xorriso_4: "-iso_mbr_part_type 0x83 -c '/boot.catalog' -b '/boot/grub/i386-pc/eltorito.img' -no-emul-boot -boot-load-size 4"
+host_provision_iso_xorriso_5: "-boot-info-table --grub2-boot-info -eltorito-alt-boot -e '--interval:appended_partition_2:all::'"
+host_provision_iso_xorriso_6: "-no-emul-boot {{ host_provision_iso_tmp_iso_dir }}"
+host_provision_iso_xorriso_cmd_a: "{{ host_provision_iso_xorriso_1 }} {{ host_provision_iso_xorriso_2 }}"
+host_provision_iso_xorriso_cmd_b: "{{ host_provision_iso_xorriso_3 }} {{ host_provision_iso_xorriso_4 }}"
+host_provision_iso_xorriso_cmd_c: "{{ host_provision_iso_xorriso_5 }} {{ host_provision_iso_xorriso_6 }}"
+host_provision_iso_xorriso_cmd_a_1: "{{ host_provision_iso_xorriso_cmd_a }} {{ host_provision_iso_xorriso_cmd_b }}"
+host_provision_iso_xorriso_cmd: "{{ host_provision_iso_xorriso_cmd_a_1 }} {{ host_provision_iso_xorriso_cmd_c }}"
+###############################################################################################################################################################

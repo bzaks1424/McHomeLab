@@ -1,0 +1,17 @@
+---
+# tasks file for {{ role_name }}
+# - name: "Create directories for Controller"
+#   ansible.builtin.file:
+#     path: "{{ item.path }}"
+#     state: directory
+#     mode: "{{ controller_nfs_mount_mode_default }}"
+#   loop: "{{ controller_nfs_mounts }}"
+- name: "Mount NFS shares for Controller"
+  ansible.posix.mount:
+    src: "{{ item.src }}"
+    path: "{{ item.path }}"
+    fstype: nfs
+    opts: "{{ item.options }}"
+    state: mounted
+  loop: "{{ controller_nfs_mounts }}"
+  ###############################################################################################################################################################

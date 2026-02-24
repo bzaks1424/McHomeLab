@@ -1,0 +1,22 @@
+---
+- name: "Apt upgrade -y"
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600 # Cache is valid for 1 hour (3600 seconds)
+    upgrade: dist # Use 'dist' for full distribution upgrade, or 'yes' for simple upgrade
+- name: "Apt autoremove -y"
+  ansible.builtin.apt:
+    autoremove: true
+- name: "Set Default Editor {{ ubuntu_default_editor_path }}"
+  community.general.alternatives:
+    name: editor
+    path: "{{ ubuntu_default_editor_path }}"
+- name: "Grant user full NOPASSWD access"
+  community.general.sudoers:
+    name: "{{ ubuntu_sudo_username }}_sudo"
+    user: "{{ ubuntu_sudo_username }}"
+    runas: ALL
+    commands: ALL
+    nopassword: true
+    state: present
+###############################################################################################################################################################

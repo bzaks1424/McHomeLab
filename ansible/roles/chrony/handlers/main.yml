@@ -1,0 +1,6 @@
+---
+# handlers file for {{ role_name }}
+- name: "Restart {{ chrony_service_name }}"
+  ansible.builtin.service:
+    name: "{{ chrony_service_name }}"
+    state: restarted

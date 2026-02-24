@@ -1,0 +1,54 @@
+---
+# You're going to be all like "oh but "declarative" and it'll be a big thing in your head.
+# Don't do it.
+# You need the ISO/PXE config BEFORE the VM
+# So just let this be procedural. Just fucking let it be.
+###############################################################################################################################################################
+######
+- name: "Check for VM Existence {{ inventory_hostname }}"
+  delegate_to: localhost
+  register: host_vm_info
+  vmware.vmware.guest_info:
+    hostname: "{{ vmware_vcenter_hostname }}"
+    username: "{{ vmware_vcenter_username }}"
+    password: "{{ vmware_vcenter_password }}"
+    validate_certs: "{{ vmware_vcenter_validate_certs }}"
+    name: "{{ inventory_hostname }}"
+- name: "Set Fact host_is_missing"
+  ansible.builtin.set_fact:
+    host_is_missing: "{{ host_vm_info.guests | length != 1 }}"
+- name: "Host is missing from Manager - Provisioning {{ inventory_hostname }}"
+  when: host_should_reprovision and host_is_missing
+  block:
+    - name: "Provision boot environment for {{ inventory_hostname }}"
+      ansible.builtin.include_role:
+        name: "{{ host_provision_role }}"
+      vars:
+        host_provision_os: "{{ host_os }}"
+    - name: "Provision Infrastructure for {{ inventory_hostname }}"
+      ansible.builtin.import_tasks: "tasks/best_task_file.yml"
+      vars:
+        role_action: "provision"
+- name: "Validating Host is PoweredOn {{ inventory_hostname }}"
+  delegate_to: localhost
+  community.vmware.vmware_guest:
+    hostname: "{{ vmware_vcenter_hostname }}"
+    username: "{{ vmware_vcenter_username }}"
+    password: "{{ vmware_vcenter_password }}"
+    validate_certs: "{{ vmware_vcenter_validate_certs }}"
+    name: "{{ inventory_hostname }}"
+    state: poweredon
+- name: "Post PowerOn validation of {{ inventory_hostname }}"
+  ansible.builtin.wait_for:
+    port: "{{ host_validate_port }}"
+    host: "{{ host_fqdn }}"
+    delay: 2 # 2 second queries
+    timeout: 300 # 5 minutes wait
+- name: "Fetch and add the remote host key to the known_hosts file {{ host_ssh_known_hosts_path }}"
+  ansible.builtin.known_hosts:
+    name: "{{ host_fqdn }}"
+    key: "{{ lookup('ansible.builtin.pipe', 'ssh-keyscan -p 22 -H ' + host_fqdn) }}"
+    state: present
+    path: "{{ host_ssh_known_hosts_path }}"
+  run_once: true # CRUCIAL: Run this only once per unique host to avoid unnecessary operations.
+###############################################################################################################################################################

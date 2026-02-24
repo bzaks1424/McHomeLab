@@ -1,0 +1,65 @@
+#cloud-config
+autoinstall:
+  version: 1
+  interactive-sections: [] # Fully automated, no prompts
+  locale: en_US.UTF-8
+  refresh-installer:
+    update: no # Don't try to update the installer during boot (saves time/errors)
+
+  packages:
+    - openssh-server
+
+  ssh:
+    install-server: true
+    allow-pw: true
+    authorized-keys: ["{{ lookup('file', host_provision_iso_ssh_pub_key_path) | trim }}"]
+
+  # --- 1. Hostname ---
+  identity:
+    hostname: "{{ host_provision_iso_hostname }}"
+    username: "{{ ansible_user }}"
+    password: "{{ ext_target_pass }}" 
+    realname: "{{ ansible_user }}"
+
+  # --- 2. Network (Static IP) ---
+  network:
+    version: 2
+    ethernets:
+      eth0: # You might need to match this to your interface name (e.g., ens160)
+        match:
+          name: "e*"
+        addresses:
+{% for nic in host_provision_iso_networks %}
+          - {{ nic.ip }}/{{ nic.netmask }}
+{% endfor %}
+        gateway4: {{ host_provision_iso_networks[0].gateway }}
+        nameservers:
+          addresses:
+{% for dns in host_provision_iso_dns_servers %}
+            - {{ dns.server }}
+{% endfor %}
+
+  # --- 3. LVM Disk Structure ---
+  storage:
+    config:
+      - {ptable: gpt, path: /dev/sda, preserve: false, name: '', grub_device: true, type: disk, id: disk-sda}
+      - {device: disk-sda, size: 1024M, flag: bios_grub, number: 1, preserve: false, type: partition, id: partition-0}
+      - {device: disk-sda, size: 2048M, flag: boot, number: 2, preserve: false, type: partition, id: partition-1}
+      - {fstype: ext4, volume: partition-1, preserve: false, type: format, id: format-boot}
+      - {device: disk-sda, size: -1, number: 3, preserve: false, type: partition, id: partition-2}
+      # Create Volume Group
+      - {name: vg_system, devices: [partition-2], preserve: false, type: lvm_volgroup, id: volgroup-0}
+      # Create Logical Volumes
+      - {name: lv_root, volgroup: volgroup-0, size: 10G, preserve: false, type: lvm_partition, id: lv-root}
+      - {name: lv_var, volgroup: volgroup-0, size: 5G, preserve: false, type: lvm_partition, id: lv-var}
+      # Format LVs
+      - {fstype: ext4, volume: lv-root, preserve: false, type: format, id: format-root}
+      - {fstype: ext4, volume: lv-var, preserve: false, type: format, id: format-var}
+      # Mount points
+      - {path: /, device: format-root, type: mount, id: mount-root}
+      - {path: /boot, device: format-boot, type: mount, id: mount-boot}
+      - {path: /var, device: format-var, type: mount, id: mount-var}
+
+  # --- 4. Post-Install Commands ---
+  late-commands:
+    - curtin in-target -- apt update && apt full-upgrade -y && apt autoremove -y && poweroff

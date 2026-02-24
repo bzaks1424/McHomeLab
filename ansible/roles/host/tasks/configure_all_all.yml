@@ -1,0 +1,35 @@
+- name: "Copy SSH Key into place if missing: '{{ host_ssh_public_key_path }}'"
+  become: true
+  become_user: "{{ ansible_user }}"
+  ansible.posix.authorized_key:
+    user: "{{ ansible_user }}"
+    state: present
+    key: "{{ lookup('file', host_ssh_public_key_path) }}"
+- name: "Configure OS Defaults {{ host_os }}"
+  ansible.builtin.include_role:
+    name: "{{ host_os }}"
+# This is where other generic configs will be applied, such as NFS, etc.
+- name: "Mount NFS shares for Controller"
+  when: host_nfs_mounts | length > 0
+  block:
+    - name: "Import nfs-common role"
+      ansible.builtin.include_role:
+        name: nfs-common
+    - name: "Mount NFS shares"
+      ansible.posix.mount:
+        src: "{{ item.src }}"
+        path: "{{ item.path }}"
+        fstype: nfs
+        opts: "{{ item.options }}"
+        state: mounted
+      loop: "{{ host_nfs_mounts }}"
+- name: "Deploy Compose Stack"
+  when: hostvars[inventory_hostname].services is defined
+  ansible.builtin.include_role:
+    name: docker_compose
+- name: "Install extra software"
+  ansible.builtin.include_role:
+    name: "{{ item.key }}"
+  loop: "{{ hostvars[inventory_hostname].software | default({}) | dict2items }}"
+  when: hostvars[inventory_hostname].software is defined
+###############################################################################################################################################################

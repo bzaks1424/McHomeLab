@@ -1,0 +1,4 @@
+---
+docker_compose_dir: "/opt/docker/compose"
+docker_compose_file_mode: "0644"
+docker_compose_dir_mode: "0755"

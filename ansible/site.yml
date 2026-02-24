@@ -1,0 +1,33 @@
+---
+- name: "Configure Controller"
+  hosts: controller
+  gather_facts: false
+  connection: local
+  run_once: true # Cause its the controller
+  become: true
+  roles:
+    - controller
+
+- name: "Validate (and Provision) hosts"
+  hosts: all:!controller
+  gather_facts: false
+  become: true
+  connection: local
+  roles:
+    - host
+  vars:
+    site_role_action: "validate"
+
+- name: "Configure Hosts"
+  hosts: all:!controller
+  gather_facts: true
+  become: true
+  # tasks:
+  #   - name: "Debug this value"
+  #     ansible.builtin.debug:
+  #       msg: "{{ ansible_distribution_release }}"
+  roles:
+    - host
+  vars:
+    site_role_action: "configure"
+###############################################################################################################################################################

@@ -1,0 +1,12 @@
+---
+# vars file for {{ role_name }}
+chrony_template_base: "etc/chrony/conf.d/00-hosts.conf"
+chrony_template_src: "{{ chrony_template_base }}.j2"
+chrony_template_dest: /{{ chrony_template_base }}
+chrony_template_mode: "0644"
+chrony_conf_file: /etc/chrony/chrony.conf
+chrony_service_name: "{{ role_name }}d"
+chrony_ntp_server: "{{ ext_ntp_server | default(chrony_ntp_server_default) }}"
+chrony_proxy_check_timeout: 10
+chrony_proxy_check_delay: 1
+###############################################################################################################################################################

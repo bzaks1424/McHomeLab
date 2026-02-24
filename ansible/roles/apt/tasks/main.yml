@@ -1,0 +1,23 @@
+---
+# tasks file for {{ role_name }}
+- name: "Install proxy config on machine if proxy is running"
+  block:
+    - name: "Apt Proxy Check"
+      ansible.builtin.wait_for:
+        port: "{{ apt_proxy_port }}"
+        host: '{{ apt_proxy_host }}'
+        delay: "{{ apt_proxy_check_delay }}"
+        timeout: "{{ apt_proxy_check_timeout }}"
+    - name: "Deploy Apt Proxy Configuration File"
+      ansible.builtin.template:
+        src: "{{ apt_template_src }}"
+        dest: "{{ apt_template_dest }}"
+        mode: "{{ apt_template_mode }}"
+        backup: true
+  rescue:
+    # Otherwise - we'll want to improve our chances at success next time by removing any existing config.
+    - name: "Remove Apt Proxy Configuration File {{ apt_template_dest }}"
+      ansible.builtin.file:
+        path: "{{ apt_template_dest }}"
+        state: absent
+###############################################################################################################################################################

@@ -1,0 +1,32 @@
+---
+- name: "ISO should exist, if not download. {{ iso_path }}"
+  ansible.builtin.get_url:
+    url: "{{ iso_url }}"
+    dest: "{{ iso_path }}" # if DEST don't match - then I auto-download!!!
+    mode: "{{ iso_mode }}"
+    checksum: "{{ iso_checksum }}"
+###############################################################################################################################################################
+- name: "Create Local Temp ISO Landing"
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: ".{{ inventory_hostname }}"
+  register: iso_tmp_dir
+- name: "Set Fact: iso_tmp_iso_dir"
+  ansible.builtin.set_fact:
+    iso_tmp_iso_dir: "{{ iso_tmp_dir.path }}/{{ iso_file_name }}"
+- name: "Create ISO subdirectory"
+  ansible.builtin.file:
+    path: "{{ iso_tmp_iso_dir }}"
+    state: directory
+    mode: '0755'
+- name: "Command: 7z -y -x *.iso -o{{ iso_tmp_iso_dir }}"
+  ansible.builtin.command: "7z -y x {{ iso_path }} -o{{ iso_tmp_iso_dir }}"
+  register: iso_7z_cmd_results
+  changed_when: iso_7z_cmd_results.rc == 0
+  # This was recommended over ansible's default move because of the fact that ISOs have funky filesystems
+- name: "Command: mv '[BOOT]' to ../BOOT "
+  ansible.builtin.command:
+    cmd: mv '{{ iso_tmp_iso_dir }}/[BOOT]' '{{ iso_tmp_dir.path }}/BOOT'
+  register: iso_mv_cmd_results
+  changed_when: iso_mv_cmd_results.rc == 0
+###############################################################################################################################################################

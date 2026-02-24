@@ -1,0 +1,23 @@
+---
+# .ansible-lint.yml
+
+# https://ansible.readthedocs.io/projects/lint/configuring/#ansible-lint-configuration
+
+profile: production
+
+skip_list:
+  - yaml[line-length]
+
+# Ansible-lint does not automatically load rules that have the 'opt-in' tag.
+# You must enable opt-in rules by listing each rule 'id' below.
+enable_list:
+  - args
+  - empty-string-compare # opt-in
+  - no-log-password # opt-in
+  - no-same-owner # opt-in
+  - name[prefix] # opt-in
+  - galaxy-version-incorrect # opt-in
+  # add yaml here if you want to avoid ignoring yaml checks when yamllint
+  # library is missing. Normally its absence just skips using that rule.
+  - yaml
+

@@ -1,6 +1,8 @@
 ### CUSTOM ###
 
 TODO.md
+.claude/
+.ansible/
 
 ### Ansible ###
 .imported_collections

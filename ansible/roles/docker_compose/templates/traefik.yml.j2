@@ -20,9 +20,15 @@
       - "{{ ep_port }}:{{ ep_port }}"
 {% endfor %}
       - "8080:8080"
+    environment:
+      LEGO_CA_CERTIFICATES: "/etc/ssl/certs/step-ca-root.crt"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "traefik-certs:/letsencrypt"
+{% if 'step-ca' in docker_compose_services %}
+{% set stepca_host_dir = docker_compose_services['step-ca'].volumes[0].split(':')[0] %}
+      - "{{ stepca_host_dir }}/certs/root_ca.crt:/etc/ssl/certs/step-ca-root.crt:ro"
+{% endif %}
 {% if config.depends_on is defined %}
     depends_on:
 {% for dep_name, dep_config in config.depends_on.items() %}

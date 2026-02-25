@@ -5,6 +5,22 @@
     state: directory
     mode: "{{ docker_compose_dir_mode }}"
 
+- name: "Pre-create bind mount directories"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+  loop: >-
+    {{ docker_compose_services | dict2items
+       | selectattr('value.volumes', 'defined')
+       | map(attribute='value.volumes')
+       | flatten
+       | map('regex_replace', ':.*$', '')
+       | select('match', '/')
+       | list }}
+
 - name: "Template docker-compose.yml"
   ansible.builtin.template:
     src: docker-compose.yml.j2

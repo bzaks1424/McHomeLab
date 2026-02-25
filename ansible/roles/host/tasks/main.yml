@@ -1,17 +1,4 @@
 ---
-# tasks file for {{ role_name }}
-# TODO: is this right place for this check? I'd like to believe so.
-- name: "Running Host Role for {{ inventory_hostname }}"
-  block:
-    - name: "Initial validation of {{ inventory_hostname }}"
-      ansible.builtin.wait_for:
-        port: "{{ host_validate_port }}"
-        host: "{{ host_fqdn }}"
-        delay: 2 # 2 second queries
-        timeout: 10 # 5 minutes wait
-  rescue:
-    - name: "Initial Validation Failed; Performing full validation of {{ inventory_hostname }}"
-      ansible.builtin.import_tasks: "tasks/best_task_file.yml"
-      vars:
-        role_action: "{{ site_role_action }}"
+- name: "{{ site_role_action | capitalize }} {{ inventory_hostname }}"
+  ansible.builtin.import_tasks: "{{ site_role_action }}.yml"
 ###############################################################################################################################################################

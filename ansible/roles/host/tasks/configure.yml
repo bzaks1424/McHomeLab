@@ -1,0 +1,4 @@
+- name: "Performing full Configuration of {{ inventory_hostname }}"
+  ansible.builtin.import_tasks: "tasks/best_task_file.yml"
+  vars:
+    role_action: "{{ site_role_action }}"

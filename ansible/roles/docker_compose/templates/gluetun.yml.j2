@@ -29,7 +29,12 @@
       - "traefik.enable=true"
 {% for tun_name, tun_svc in docker_compose_gluetun_tunneled.items() %}
 {% if tun_svc.traefik is defined and tun_svc.traefik != false %}
+{% if tun_svc.dns_name is defined %}
+{% set fqdn = tun_svc.dns_name ~ '.' ~ ansible_host %}
+      - "traefik.http.routers.{{ tun_name }}.rule=Host(`{{ fqdn }}`)"
+{% elif tun_svc.traefik.rule is defined %}
       - "traefik.http.routers.{{ tun_name }}.rule={{ tun_svc.traefik.rule }}"
+{% endif %}
       - "traefik.http.routers.{{ tun_name }}.entrypoints=websecure"
       - "traefik.http.routers.{{ tun_name }}.tls=true"
       - "traefik.http.routers.{{ tun_name }}.tls.certresolver=step-ca"

@@ -1,0 +1,8 @@
+---
+- name: "Import OS Specific variables for {{ host_provision_os }}"
+  ansible.builtin.include_vars:
+    file: "{{ host_provision_os }}.yml"
+
+- name: "Provision boot environment via {{ host_provision_method }}"
+  ansible.builtin.include_tasks: "{{ host_provision_method }}.yml"
+###############################################################################################################################################################

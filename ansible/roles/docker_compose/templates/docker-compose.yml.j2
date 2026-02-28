@@ -49,7 +49,7 @@ services:
       timeout: {{ svc.healthcheck.timeout }}
       retries: {{ svc.healthcheck.retries }}
 {% endif %}
-{% if svc.traefik is defined and svc.traefik != false %}
+{% if svc.traefik is defined and svc.traefik != false and svc.network_mode is not defined %}
     labels:
       - "traefik.enable=true"
 {% if svc.traefik.routes is defined %}
@@ -70,6 +70,9 @@ services:
       - "traefik.http.routers.{{ svc_name }}.tls=true"
       - "traefik.http.routers.{{ svc_name }}.tls.certresolver=step-ca"
       - "traefik.http.services.{{ svc_name }}.loadbalancer.server.port={{ svc.traefik.port }}"
+{% if svc.traefik.scheme is defined %}
+      - "traefik.http.services.{{ svc_name }}.loadbalancer.server.scheme={{ svc.traefik.scheme }}"
+{% endif %}
 {% elif svc.traefik.rule is defined %}
       - "traefik.http.routers.{{ svc_name }}.rule={{ svc.traefik.rule }}"
       - "traefik.http.routers.{{ svc_name }}.entrypoints=websecure"
@@ -77,14 +80,10 @@ services:
       - "traefik.http.routers.{{ svc_name }}.tls.certresolver=step-ca"
       - "traefik.http.services.{{ svc_name }}.loadbalancer.server.port={{ svc.traefik.port }}"
 {% endif %}
-{% elif svc.traefik is not defined or svc.traefik == false %}
+{% else %}
     labels:
       - "traefik.enable=false"
 {% endif %}
 {% endif %}
 
 {% endfor %}
-{% if 'traefik' in docker_compose_infra_services %}
-volumes:
-  traefik-certs:
-{% endif %}

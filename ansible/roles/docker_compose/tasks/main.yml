@@ -9,17 +9,32 @@
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
     mode: "0755"
   loop: >-
-    {{ docker_compose_services | dict2items
-       | selectattr('value.volumes', 'defined')
-       | map(attribute='value.volumes')
-       | flatten
-       | map('regex_replace', ':.*$', '')
-       | select('match', '/')
-       | list }}
+    {{
+      ((docker_compose_services | dict2items
+        | selectattr('value.volumes', 'defined')
+        | map(attribute='value.volumes')
+        | flatten
+        | map('regex_replace', ':.*$', '')
+        | select('match', '/')
+        | reject('match', '/var/run/')
+        | reject('match', '/dev/')
+        | reject('match', '/proc/')
+        | reject('match', '/sys/')
+        | list)
+       + _infra_volume_paths)
+      | unique
+      | reject('in', _nfs_mount_paths)
+      | list
+    }}
+  vars:
+    _nfs_mount_paths: >-
+      {{ (hostvars[inventory_hostname].provision.mounts | default([]))
+         | map(attribute='path') | list }}
+    _infra_volume_paths: >-
+      {{ [docker_compose_infra_services.traefik.config.certs_volume | default('')]
+         | select | list }}
 
 - name: "Template docker-compose.yml"
   ansible.builtin.template:

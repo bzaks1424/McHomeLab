@@ -12,13 +12,13 @@ autoinstall:
   ssh:
     install-server: true
     allow-pw: true
-    authorized-keys: ["{{ lookup('file', host_provision_iso_ssh_pub_key_path) | trim }}"]
+    authorized-keys: ["{{ lookup('file', host_provision_ssh_pub_key_path) | trim }}"]
 
   # --- 1. Hostname ---
   identity:
-    hostname: "{{ host_provision_iso_hostname }}"
+    hostname: "{{ host_provision_hostname }}"
     username: "{{ ansible_user }}"
-    password: "{{ ext_target_pass }}" 
+    password: "{{ ext_target_pass }}"
     realname: "{{ ansible_user }}"
 
   # --- 2. Network (Static IP) ---
@@ -29,13 +29,13 @@ autoinstall:
         match:
           name: "e*"
         addresses:
-{% for nic in host_provision_iso_networks %}
+{% for nic in host_provision_networks %}
           - {{ nic.ip }}/{{ nic.netmask }}
 {% endfor %}
-        gateway4: {{ host_provision_iso_networks[0].gateway }}
+        gateway4: {{ host_provision_networks[0].gateway }}
         nameservers:
           addresses:
-{% for dns in host_provision_iso_dns_servers %}
+{% for dns in host_provision_dns_servers %}
             - {{ dns.server }}
 {% endfor %}
 

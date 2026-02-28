@@ -1,0 +1,18 @@
+galaxy_info:
+  author: bzaks1424
+  description: >
+    Provisions the boot environment for {{ inventory_hostname }}.
+    Dispatches to ISO or PXE method based on provision.method.
+    ISO: builds custom autoinstall ISO and attaches to VM CD-ROM.
+    PXE: templates iPXE boot script + autoinstall config on util.
+  company: McHomeLab
+
+  license: BSD-3-Clause
+
+  min_ansible_version: "2.1"
+
+  galaxy_tags: []
+
+dependencies: []
+  # No hard dependencies — controller role already installs xorriso + p7zip.
+  # PXE method needs no controller-side tools.

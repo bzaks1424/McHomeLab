@@ -18,13 +18,6 @@
 {% endif %}
       FIREWALL_OUTBOUND_SUBNETS: "{{ config.firewall_outbound_subnets }}"
 {% if docker_compose_gluetun_tunneled | length > 0 %}
-    ports:
-{% for tun_name, tun_svc in docker_compose_gluetun_tunneled.items() %}
-{% if tun_svc.traefik is defined and tun_svc.traefik != false %}
-{# Tunneled service ports exposed on gluetun for traefik to reach #}
-      - "{{ tun_svc.traefik.port }}:{{ tun_svc.traefik.port }}"
-{% endif %}
-{% endfor %}
     labels:
       - "traefik.enable=true"
 {% for tun_name, tun_svc in docker_compose_gluetun_tunneled.items() %}
@@ -43,7 +36,7 @@
 {% endfor %}
 {% endif %}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "https://ipinfo.io"]
+      test: ["CMD", "wget", "-qO-", "http://ipinfo.io"]
       interval: 30s
       timeout: 10s
       retries: 5

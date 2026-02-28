@@ -1,25 +1,14 @@
 ---
+# Unified VM provisioning flow for all methods (ISO, PXE)
 # https://docs.ansible.com/projects/ansible/latest/collections/community/vmware/vmware_guest_module.html
-- name: "Branching logic on host_provision_method {{ host_provision_method }}"
-  when: host_provision_method_is_iso
-  block:
-    - name: "Set CD Type {{ host_provision_method }}"
-      ansible.builtin.set_fact:
-        host_provision_cdrom_type: "{{ host_provision_method }}"
-    - name: "Set ISO Path {{ host_iso4cd_path }}"
-      ansible.builtin.set_fact:
-        host_iso4cd_path: "{{ host_iso4cd_path }}"
-- name: "Initialize values for ISO details"
-  when: not host_provision_method_is_iso
-  block:
-    - name: "Set CD Type"
-      ansible.builtin.set_fact:
-        host_provision_cdrom_type: "none"
-    - name: "Set ISO Path"
-      ansible.builtin.set_fact:
-        host_iso4cd_path: "" # This needs to be below the above to prevent overwriting something good
-- name: "Create new VM and attach ISO {{ host_provision_iso_custom_iso_name }}"
+#
+# Flow: Create VM (poweredoff) → Get MAC → Run host_provision role → Power on → Wait install → Cleanup
+#
+
+# 1. Create VM (always poweredoff — boot env must be ready before first boot)
+- name: "Create new VM {{ inventory_hostname }}"
   delegate_to: localhost
+  register: host_vm_create_result
   community.vmware.vmware_guest:
     hostname: "{{ vmware_vcenter_hostname }}"
     username: "{{ vmware_vcenter_username }}"
@@ -27,7 +16,7 @@
     validate_certs: "{{ vmware_vcenter_validate_certs }}"
     ###########################################################################################################################################################
     name: "{{ inventory_hostname }}"
-    state: poweredon # Start in powered off state for initial OS install
+    state: poweredoff
     cluster: "{{ host_manager_infra.cluster }}"
     datacenter: "{{ host_manager_infra.datacenter }}"
     guest_id: "{{ host_manager_infra.guest_id }}"
@@ -36,44 +25,66 @@
     hardware:
       memory_mb: "{{ host_ram_mb }}"
       num_cpus: "{{ host_cpus }}"
-    cdrom:
-      - controller_number: 0
-        unit_number: 0
-        controller_type: "sata" # Harrrrd Coding 11/20/2025
-        state: present
-        type: "{{ host_provision_cdrom_type }}"
-        iso_path: "{{ host_iso4cd_path }}"
     # --- PRIMARY DISK CONFIGURATION ---
     disk: "{{ host_disks }}"
     # --- NETWORK CONFIGURATION ---
     networks: "{{ host_networks }}"
-- name: "ISO Method Exclusive: Wait for PowerOff, Disconnect CD, Reboot"
-  when: host_provision_method_is_iso
-  block:
-    - name: "Wait VM Power State Powered Off {{ inventory_hostname }}"
-      delegate_to: localhost
-      register: host_vm_info
-      vmware.vmware.guest_info:
-        hostname: "{{ vmware_vcenter_hostname }}"
-        username: "{{ vmware_vcenter_username }}"
-        password: "{{ vmware_vcenter_password }}"
-        validate_certs: "{{ vmware_vcenter_validate_certs }}"
-        name: "{{ inventory_hostname }}"
-      until: host_vm_info.guests[0].hw_power_status == "poweredOff"
-      delay: 60
-      retries: 60
-    - name: "Discconect CD-ROM on {{ inventory_hostname }}"
-      delegate_to: localhost
-      community.vmware.vmware_guest:
-        hostname: "{{ vmware_vcenter_hostname }}"
-        username: "{{ vmware_vcenter_username }}"
-        password: "{{ vmware_vcenter_password }}"
-        validate_certs: "{{ vmware_vcenter_validate_certs }}"
-        name: "{{ inventory_hostname }}"
-        cdrom:
-          - controller_number: 0
-            unit_number: 0
-            controller_type: "sata" # Harrrrd Coding 11/20/2025
-            state: present
-            type: "none"
+
+# 2. Get VM info (MAC address needed by PXE for MAC-specific iPXE script)
+- name: "Get VM info for {{ inventory_hostname }}"
+  delegate_to: localhost
+  register: host_vm_info_post_create
+  vmware.vmware.guest_info:
+    hostname: "{{ vmware_vcenter_hostname }}"
+    username: "{{ vmware_vcenter_username }}"
+    password: "{{ vmware_vcenter_password }}"
+    validate_certs: "{{ vmware_vcenter_validate_certs }}"
+    name: "{{ inventory_hostname }}"
+
+- name: "Set VM MAC address facts"
+  ansible.builtin.set_fact:
+    host_vm_mac: "{{ host_vm_info_post_create.guests[0].hw_eth0.macaddress }}"
+    host_vm_mac_raw: "{{ host_vm_info_post_create.guests[0].hw_eth0.macaddress | replace(':','') | upper }}"
+
+# 3. Provision boot environment (method-specific)
+#    ISO: builds custom ISO on controller, attaches to VM CD-ROM
+#    PXE: templates iPXE script + autoinstall config, uploads to util
+- name: "Provision boot environment for {{ inventory_hostname }}"
+  ansible.builtin.include_role:
+    name: host_provision
+  vars:
+    host_provision_os: "{{ host_os }}"
+
+# 4. Power on VM (ISO boots from CD, PXE boots from network)
+- name: "Power on VM {{ inventory_hostname }}"
+  delegate_to: localhost
+  community.vmware.vmware_guest:
+    hostname: "{{ vmware_vcenter_hostname }}"
+    username: "{{ vmware_vcenter_username }}"
+    password: "{{ vmware_vcenter_password }}"
+    validate_certs: "{{ vmware_vcenter_validate_certs }}"
+    name: "{{ inventory_hostname }}"
+    state: poweredon
+
+# 5. Wait for install to complete (VM powers off via late-commands: poweroff)
+- name: "Wait for install completion (poweroff) {{ inventory_hostname }}"
+  delegate_to: localhost
+  register: host_vm_info_install
+  vmware.vmware.guest_info:
+    hostname: "{{ vmware_vcenter_hostname }}"
+    username: "{{ vmware_vcenter_username }}"
+    password: "{{ vmware_vcenter_password }}"
+    validate_certs: "{{ vmware_vcenter_validate_certs }}"
+    name: "{{ inventory_hostname }}"
+  until: host_vm_info_install.guests[0].hw_power_status == "poweredOff"
+  delay: 60
+  retries: 60
+
+# 6. Cleanup boot environment (method-specific)
+#    ISO: disconnects CD-ROM so next boot goes to disk
+#    PXE: removes MAC-specific iPXE script so next boot goes to disk
+- name: "Cleanup boot environment for {{ inventory_hostname }}"
+  ansible.builtin.include_role:
+    name: host_provision
+    tasks_from: "cleanup_{{ host_provision_method }}"
 ###############################################################################################################################################################

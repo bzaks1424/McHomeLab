@@ -20,12 +20,9 @@
 - name: "Host is missing from Manager - Provisioning {{ inventory_hostname }}"
   when: host_should_reprovision and host_is_missing
   block:
-    - name: "Provision boot environment for {{ inventory_hostname }}"
-      ansible.builtin.include_role:
-        name: "{{ host_provision_role }}"
-      vars:
-        host_provision_os: "{{ host_os }}"
-    - name: "Provision Infrastructure for {{ inventory_hostname }}"
+    # provision_vm_vmware.yml now handles everything:
+    # create VM → get MAC → run host_provision role → power on → wait install → cleanup
+    - name: "Provision {{ inventory_hostname }}"
       ansible.builtin.import_tasks: "tasks/best_task_file.yml"
       vars:
         role_action: "provision"

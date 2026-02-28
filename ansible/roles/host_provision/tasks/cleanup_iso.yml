@@ -1,0 +1,17 @@
+---
+# ISO cleanup: disconnect CD-ROM after install completes
+- name: "Disconnect CD-ROM on {{ inventory_hostname }}"
+  delegate_to: localhost
+  community.vmware.vmware_guest:
+    hostname: "{{ vmware_vcenter_hostname }}"
+    username: "{{ vmware_vcenter_username }}"
+    password: "{{ vmware_vcenter_password }}"
+    validate_certs: "{{ vmware_vcenter_validate_certs }}"
+    name: "{{ inventory_hostname }}"
+    cdrom:
+      - controller_number: 0
+        unit_number: 0
+        controller_type: "sata"
+        state: present
+        type: "none"
+###############################################################################################################################################################

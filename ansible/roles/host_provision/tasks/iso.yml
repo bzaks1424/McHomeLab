@@ -1,0 +1,87 @@
+---
+# ISO method: build custom autoinstall ISO and attach to VM CD-ROM
+#
+# Depends on from ubuntu.yml (loaded by main.yml):
+#   host_provision_iso_file_name, host_provision_iso_url, host_provision_iso_checksum
+# Depends on from vars/main.yml:
+#   host_provision_iso_dir
+# Uses registered vars from the iso role:
+#   iso_tmp_dir.path, iso_tmp_iso_dir
+
+# 1. Set ISO-specific working vars
+- name: "Set ISO working vars for {{ inventory_hostname }}"
+  ansible.builtin.set_fact:
+    _iso_custom_name: "{{ inventory_hostname }}.{{ host_provision_iso_file_name }}"
+    _iso_custom_path: "{{ host_provision_iso_dir }}/{{ inventory_hostname }}.{{ host_provision_iso_file_name }}"
+
+# 2. Check if custom ISO already exists (skip rebuild if so)
+- name: "Check for existing custom ISO"
+  ansible.builtin.stat:
+    path: "{{ _iso_custom_path }}"
+  register: _iso_stat
+
+# 3. Build custom ISO if needed
+- name: "Generate new custom ISO for {{ inventory_hostname }}"
+  when: not _iso_stat.stat.exists
+  block:
+    - name: "Download and extract source ISO"
+      ansible.builtin.include_role:
+        name: "iso"
+      vars:
+        iso_file_name: "{{ host_provision_iso_file_name }}"
+        iso_url: "{{ host_provision_iso_url }}"
+        iso_checksum: "{{ host_provision_iso_checksum }}"
+
+    - name: "Create directories for AutoInstall"
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "{{ host_provision_template_mode_default }}"
+      loop:
+        - "{{ iso_tmp_iso_dir }}/nocloud"
+        - "{{ iso_tmp_iso_dir }}/boot/grub"
+
+    - name: "Template autoinstall configs"
+      ansible.builtin.template:
+        src: "{{ item.src }}"
+        dest: "{{ iso_tmp_iso_dir }}/{{ item.dest }}"
+        mode: "{{ host_provision_template_mode_default }}"
+      loop:
+        - { src: "nocloud/meta-data.j2", dest: "nocloud/meta-data" }
+        - { src: "nocloud/user-data.j2", dest: "nocloud/user-data" }
+        - { src: "iso/grub.cfg.j2", dest: "boot/grub/grub.cfg" }
+
+    - name: "Generate custom ISO {{ _iso_custom_path }}"
+      ansible.builtin.command:
+        cmd: >-
+          xorriso -as mkisofs -r -V 'Ubuntu Custom Install'
+          -o {{ _iso_custom_path }}
+          --grub2-mbr {{ iso_tmp_dir.path }}/BOOT/1-Boot-NoEmul.img
+          -partition_offset 16 --mbr-force-bootable
+          -append_partition 2 0xEF {{ iso_tmp_dir.path }}/BOOT/2-Boot-NoEmul.img
+          -appended_part_as_gpt -iso_mbr_part_type 0x83
+          -c '/boot.catalog'
+          -b '/boot/grub/i386-pc/eltorito.img'
+          -no-emul-boot -boot-load-size 4 -boot-info-table --grub2-boot-info
+          -eltorito-alt-boot -e '--interval:appended_partition_2:all::'
+          -no-emul-boot {{ iso_tmp_iso_dir }}
+      register: _xorriso_result
+      changed_when: _xorriso_result.rc == 0
+
+# 4. Attach ISO to VM CD-ROM (VM was created poweredoff by provision_vm_vmware.yml)
+- name: "Attach ISO to VM CD-ROM"
+  delegate_to: localhost
+  community.vmware.vmware_guest:
+    hostname: "{{ vmware_vcenter_hostname }}"
+    username: "{{ vmware_vcenter_username }}"
+    password: "{{ vmware_vcenter_password }}"
+    validate_certs: "{{ vmware_vcenter_validate_certs }}"
+    name: "{{ inventory_hostname }}"
+    cdrom:
+      - controller_number: 0
+        unit_number: 0
+        controller_type: "sata"
+        state: present
+        type: "iso"
+        iso_path: "{{ hostvars[inventory_hostname].provision.manager_infra.iso_mount_dir }}/{{ _iso_custom_name }}"
+###############################################################################################################################################################

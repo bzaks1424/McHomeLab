@@ -5,6 +5,7 @@
     dest: "{{ iso_path }}" # if DEST don't match - then I auto-download!!!
     mode: "{{ iso_mode }}"
     checksum: "{{ iso_checksum }}"
+    timeout: 300
 ###############################################################################################################################################################
 - name: "Create Local Temp ISO Landing"
   ansible.builtin.tempfile:

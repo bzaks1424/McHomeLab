@@ -1,0 +1,22 @@
+---
+# vars file for host_provision — Ubuntu OS-specific
+#
+# Shared vars (used by both ISO and PXE methods):
+#   Version info and ISO filename — PXE references the filename for the streaming URL
+#
+# ISO-only working directory paths are defined locally in iso.yml
+# PXE-only CDN URLs are defined here (referenced by custom.ipxe.j2)
+#
+host_provision_iso_release_version: "24.04"
+host_provision_iso_minor_release_version: "4"
+host_provision_iso_full_release_version: "{{ host_provision_iso_release_version }}.{{ host_provision_iso_minor_release_version }}"
+host_provision_iso_file_name: "ubuntu-{{ host_provision_iso_full_release_version }}-live-server-amd64.iso"
+host_provision_iso_base_url: "https://releases.ubuntu.com/{{ host_provision_iso_release_version }}"
+host_provision_iso_url: "{{ host_provision_iso_base_url }}/{{ host_provision_iso_file_name }}"
+host_provision_iso_checksum: "sha256:{{ host_provision_iso_base_url }}/SHA256SUMS"
+# PXE-only: kernel/initrd from netboot.xyz CDN, ISO from Ubuntu CDN
+# Tag from https://github.com/netbootxyz/ubuntu-squash/releases — update when OS version changes
+host_provision_pxe_kernel_tag: "24.04.4-717d3a1a"
+host_provision_pxe_kernel_url: "https://github.com/netbootxyz/ubuntu-squash/releases/download/{{ host_provision_pxe_kernel_tag }}/"
+host_provision_pxe_iso_url: "http://releases.ubuntu.com/noble/{{ host_provision_iso_file_name }}"
+###############################################################################################################################################################

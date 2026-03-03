@@ -3,7 +3,7 @@
 {% set config = gluetun.config %}
   gluetun:
     image: qmcgaw/gluetun:latest
-    restart: unless-stopped
+    restart: {{ gluetun.restart | default('unless-stopped') }}
     cap_add:
       - NET_ADMIN
     devices:

@@ -9,7 +9,7 @@
 {% endif %}
   traefik:
     image: traefik:latest
-    restart: unless-stopped
+    restart: {{ traefik.restart | default('unless-stopped') }}
     command:
       - "--api.insecure=true"
       - "--providers.docker=true"

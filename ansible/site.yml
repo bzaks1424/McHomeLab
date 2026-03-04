@@ -4,9 +4,24 @@
   connection: local
   gather_facts: false
   tasks:
-    - name: "Sort items by priority"
+    - name: "Sort hosts by priority"
       ansible.builtin.set_fact:
-        build_items: "{{ groups['all'] | reject('equalto', 'controller') | map('extract', hostvars) | sort(attribute='priority') | map(attribute='inventory_hostname') | list }}"
+        build_hosts: "{{ groups['all'] | reject('equalto', 'controller') | map('extract', hostvars) | sort(attribute='priority') | map(attribute='inventory_hostname') | list }}"
+
+    - name: "Collect exports from all hosts"
+      ansible.builtin.set_fact:
+        _export_pairs: "{{ _export_pairs | default([]) + (hostvars[item]['export'] | default([]) | map('combine', {'_host': item}) | list) }}"
+      loop: "{{ groups['all'] }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: "Build export registry"
+      ansible.builtin.set_fact:
+        export_registry: "{{ export_registry | default({}) | combine({item.name: item._host}) }}"
+      loop: "{{ _export_pairs | default([]) }}"
+      loop_control:
+        label: "{{ item.name }} -> {{ item._host }}"
+      when: _export_pairs is defined and _export_pairs | length > 0
 
 - name: "Configure Controller"
   hosts: controller
@@ -18,7 +33,7 @@
     - controller
 
 - name: "Validate (and Provision)"
-  hosts: "{{ hostvars['localhost'].build_items }}"
+  hosts: "{{ hostvars['localhost'].build_hosts }}"
   serial: 1
   gather_facts: false
   become: true
@@ -29,7 +44,7 @@
     site_role_action: "validate"
 
 - name: "Configure"
-  hosts: "{{ hostvars['localhost'].build_items }}"
+  hosts: "{{ hostvars['localhost'].build_hosts }}"
   serial: 1
   gather_facts: true
   become: true

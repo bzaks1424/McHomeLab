@@ -1,4 +1,46 @@
+# --- Import Phase ---
+- name: "Import '{{ item.name }}' to {{ inventory_hostname }}"
+  when: host_import | length > 0
+  ansible.builtin.copy:
+    src: "{{ export_root }}/{{ item.from | default(hostvars['localhost'].export_registry[item.name]) }}/{{ item.name }}"
+    dest: "{{ item.dest }}"
+    mode: "{{ item.mode | default('0644') }}"
+    owner: "{{ item.owner | default(ansible_user) }}"
+    group: "{{ item.group | default(ansible_user) }}"
+  loop: "{{ host_import }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# --- Configure Phase ---
 - name: "Performing full Configuration of {{ inventory_hostname }}"
   ansible.builtin.import_tasks: "tasks/best_task_file.yml"
   vars:
     role_action: "{{ site_role_action }}"
+
+# --- Export Phase ---
+- name: "Ensure export directory on controller"
+  when: host_export | length > 0
+  ansible.builtin.file:
+    path: "{{ export_root }}/{{ inventory_hostname }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+
+- name: "Export '{{ item.name }}' from {{ inventory_hostname }}"
+  when: host_export | length > 0
+  ansible.builtin.fetch:
+    src: "{{ item.src }}"
+    dest: "{{ export_root }}/{{ inventory_hostname }}/{{ item.name }}"
+    flat: true
+  loop: "{{ host_export }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: "Register export '{{ item.name }}' as global fact"
+  when: host_export | length > 0
+  ansible.builtin.set_fact:
+    "{{ item.name }}": "{{ export_root }}/{{ inventory_hostname }}/{{ item.name }}"
+  loop: "{{ host_export }}"
+  loop_control:
+    label: "{{ item.name }}"

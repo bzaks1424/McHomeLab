@@ -23,10 +23,10 @@
         opts: "{{ item.options }}"
         state: mounted
       loop: "{{ host_nfs_mounts }}"
-- name: "Deploy Compose Stack"
+- name: "Deploy Services"
   when: hostvars[inventory_hostname].services is defined
   ansible.builtin.include_role:
-    name: docker_compose
+    name: service
 - name: "Install extra software"
   ansible.builtin.include_role:
     name: "{{ item.key }}"

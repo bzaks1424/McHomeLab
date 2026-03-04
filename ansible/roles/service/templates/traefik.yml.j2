@@ -1,11 +1,11 @@
 {# Traefik infrastructure service template #}
-{% set traefik = docker_compose_infra_services.traefik %}
+{% set traefik = service_infra_services.traefik %}
 {% set config = traefik.config %}
 {# Resolve CA cert host path: explicit config wins, else derive from co-located step-ca #}
 {% if config.ca_cert_path is defined %}
 {%   set ca_cert_host_path = config.ca_cert_path %}
-{% elif 'step-ca' in docker_compose_services %}
-{%   set ca_cert_host_path = docker_compose_services['step-ca'].volumes[0].split(':')[0] ~ '/certs/root_ca.crt' %}
+{% elif 'step-ca' in service_services %}
+{%   set ca_cert_host_path = service_services['step-ca'].volumes[0].split(':')[0] ~ '/certs/root_ca.crt' %}
 {% endif %}
   traefik:
     image: traefik:latest

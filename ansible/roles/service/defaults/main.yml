@@ -1,0 +1,4 @@
+---
+service_dir: "/opt/docker/compose"
+service_file_mode: "0644"
+service_dir_mode: "0755"

@@ -1,5 +1,5 @@
 {# Gluetun infrastructure service template #}
-{% set gluetun = docker_compose_infra_services.gluetun %}
+{% set gluetun = service_infra_services.gluetun %}
 {% set config = gluetun.config %}
   gluetun:
     image: qmcgaw/gluetun:latest
@@ -17,10 +17,10 @@
       SERVER_COUNTRIES: "{{ config.server_countries }}"
 {% endif %}
       FIREWALL_OUTBOUND_SUBNETS: "{{ config.firewall_outbound_subnets }}"
-{% if docker_compose_gluetun_tunneled | length > 0 %}
+{% if service_gluetun_tunneled | length > 0 %}
     labels:
       - "traefik.enable=true"
-{% for tun_name, tun_svc in docker_compose_gluetun_tunneled.items() %}
+{% for tun_name, tun_svc in service_gluetun_tunneled.items() %}
 {% if tun_svc.traefik is defined and tun_svc.traefik != false %}
 {% if tun_svc.dns_name is defined %}
 {% set fqdn = tun_svc.dns_name ~ '.' ~ ansible_host %}
@@ -36,7 +36,7 @@
 {% endfor %}
 {% endif %}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://ipinfo.io"]
+      test: ["CMD", "/gluetun-entrypoint", "healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 5

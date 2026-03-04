@@ -1,9 +1,9 @@
 ---
 - name: "Create compose directory"
   ansible.builtin.file:
-    path: "{{ docker_compose_dir }}"
+    path: "{{ service_dir }}"
     state: directory
-    mode: "{{ docker_compose_dir_mode }}"
+    mode: "{{ service_dir_mode }}"
 
 - name: "Pre-create bind mount directories"
   ansible.builtin.file:
@@ -12,7 +12,7 @@
     mode: "0755"
   loop: >-
     {{
-      ((docker_compose_services | dict2items
+      ((service_services | dict2items
         | selectattr('value.volumes', 'defined')
         | map(attribute='value.volumes')
         | flatten
@@ -33,16 +33,16 @@
       {{ (hostvars[inventory_hostname].provision.mounts | default([]))
          | map(attribute='path') | list }}
     _infra_volume_paths: >-
-      {{ [docker_compose_infra_services.traefik.config.certs_volume | default('')]
+      {{ [service_infra_services.traefik.config.certs_volume | default('')]
          | select | list }}
 
 - name: "Template docker-compose.yml"
   ansible.builtin.template:
     src: docker-compose.yml.j2
-    dest: "{{ docker_compose_dir }}/docker-compose.yml"
-    mode: "{{ docker_compose_file_mode }}"
+    dest: "{{ service_dir }}/docker-compose.yml"
+    mode: "{{ service_file_mode }}"
 
 - name: "Deploy compose stack"
   community.docker.docker_compose_v2:
-    project_src: "{{ docker_compose_dir }}"
+    project_src: "{{ service_dir }}"
     state: present

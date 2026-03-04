@@ -1,29 +1,29 @@
 ---
 # All services from hosts.yml
-docker_compose_services: "{{ hostvars[inventory_hostname].services | default({}) }}"
+service_services: "{{ hostvars[inventory_hostname].services | default({}) }}"
 
 # Services sorted by priority (for compose ordering)
-docker_compose_services_sorted: >-
-  {{ docker_compose_services | dict2items
+service_services_sorted: >-
+  {{ service_services | dict2items
      | sort(attribute='value.priority', reverse=false)
      | items2dict }}
 
 # Infrastructure services (traefik, gluetun) — rendered from role templates
-docker_compose_infra_services: >-
-  {{ docker_compose_services | dict2items
+service_infra_services: >-
+  {{ service_services | dict2items
      | selectattr('value.type', 'defined')
      | selectattr('value.type', 'eq', 'infrastructure')
      | items2dict }}
 
 # Regular services — rendered as standard compose blocks
-docker_compose_regular_services: >-
-  {{ docker_compose_services | dict2items
+service_regular_services: >-
+  {{ service_services | dict2items
      | rejectattr('value.type', 'defined')
      | items2dict }}
 
 # Services tunneled through gluetun (have network_mode: "service:gluetun")
-docker_compose_gluetun_tunneled: >-
-  {{ docker_compose_services | dict2items
+service_gluetun_tunneled: >-
+  {{ service_services | dict2items
      | selectattr('value.network_mode', 'defined')
      | selectattr('value.network_mode', 'eq', 'service:gluetun')
      | items2dict }}

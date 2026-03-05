@@ -59,6 +59,12 @@
 
     - name: "Remove stale entries from registry"
       when: _stale_keys | length > 0
+      vars:
+        _stale_keys: >-
+          {{ _file_checks.results
+             | rejectattr('stat.exists')
+             | map(attribute='item.key')
+             | list }}
       block:
         - name: "Purging stale entries"
           ansible.builtin.debug:
@@ -70,12 +76,6 @@
               {{ registry | dict2items
                  | rejectattr('key', 'in', _stale_keys)
                  | items2dict }}
-      vars:
-        _stale_keys: >-
-          {{ _file_checks.results
-             | rejectattr('stat.exists')
-             | map(attribute='item.key')
-             | list }}
 
 - name: "Save cleaned registry"
   ansible.builtin.include_tasks: save.yml

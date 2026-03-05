@@ -1,0 +1,284 @@
+---
+# test.yml — sanitized mock inventory for linting and dry-run testing
+#
+# Use with: ansible-playbook site.yml -i inventory/test.yml --check
+#
+# All credentials are fake. ansible_connection: local on all hosts
+# so no SSH is required. ansible_become: false to skip privilege escalation.
+
+all:
+  vars:
+    ansible_user: "{{ lookup('env', 'USER') }}"
+    ansible_become_pass: "test-pass"
+    ansible_ssh_private_key_file: "{{ playbook_dir }}/inventory/test-key"
+    ansible_connection: local
+    ext_target_pass: "$6$fakesalt$fakehashfakehashfakehashfakehashfakehashfakehash"
+    ext_ntp_server: "ntp.example.com"
+    ext_apt_proxy_host: "util.example.com"
+    vmware_vcenter_hostname: "vcenter.example.com"
+    vmware_vcenter_username: "admin@vsphere.local"
+    vmware_vcenter_password: "test-pass"
+    vmware_vcenter_validate_certs: false
+    export_root: "/tmp/mhl-test"
+
+  hosts:
+
+    ###########################################################################
+    # CONTROLLER
+    ###########################################################################
+    controller:
+      priority: 0
+      ansible_host: localhost
+      export:
+        - name: iso_root
+          type: var
+          value: /tmp/mhl-test/ISOs
+      provision:
+        type: controller
+        mounts:
+          - src: nas.example.com:/volume1/SSD_SHARE
+            path: /mnt/SSD_SHARE
+            type: nfs
+            options: defaults,vers=4.1,auto,_netdev,hard,intr
+
+    ###########################################################################
+    # UTIL — exercises ISO provisioning, infrastructure services, exports
+    ###########################################################################
+    util:
+      priority: 10
+      ansible_host: util.example.com
+      ansible_python_interpreter: "/usr/bin/python3"
+      export:
+        - name: root_ca_cert
+          type: file
+          src: /opt/containers/step-ca/certs/root_ca.crt
+        - name: pxe_base_url
+          type: var
+          value: "http://xyz.{{ ansible_host }}"
+        - name: pxe_assets_dir
+          type: var
+          value: "/mnt/HDD_SHARE/containers/util/netbootxyz/assets"
+        - name: pxe_config_dir
+          type: var
+          value: "/mnt/HDD_SHARE/containers/util/netbootxyz/config"
+
+      provision:
+        type: vm
+        manager: vmware
+        method: iso
+        reprovision: false
+        validate:
+          port: 22
+        hardware:
+          os: ubuntu
+          cpus: 2
+          ram_mb: 16384
+          disks:
+            - size_gb: 100
+              datastore: SSD_SHARE
+              type: thin
+          networks:
+            - name: "MGMT-V"
+              provider: unifi
+              type: vmxnet3
+              ip: 192.168.254.5
+              netmask: 24
+              gateway: 192.168.254.1
+          dns:
+            servers:
+              - server: 192.168.254.1
+            domain: example.com
+        manager_infra:
+          datacenter: "TestDC"
+          cluster: "TestCluster"
+          resource_pool: "/"
+          folder: "/TestDC/vm/"
+          guest_id: "ubuntu64Guest"
+          iso_mount_dir: "[SSD_SHARE]/ISOs"
+        mounts:
+          - src: nas.example.com:/volume1/SSD_SHARE
+            path: /mnt/SSD_SHARE
+            type: nfs
+            options: defaults,vers=4.1,auto,_netdev,hard,intr
+
+      services:
+        traefik:
+          priority: 0
+          type: infrastructure
+          config:
+            acme_ca: "https://step-ca:9000/acme/acme/directory"
+            acme_email: "admin@example.com"
+            entrypoints:
+              web: 80
+              websecure: 443
+            certs_volume: "/opt/containers/traefik/letsencrypt"
+            depends_on:
+              step-ca:
+                condition: service_healthy
+
+        step-ca:
+          priority: 10
+          dns_name: ca
+          image: "smallstep/step-ca:latest"
+          volumes:
+            - "/opt/containers/step-ca:/home/step"
+          environment:
+            DOCKER_STEPCA_INIT_NAME: "Test CA"
+            DOCKER_STEPCA_INIT_DNS_NAMES: "step-ca,ca.util.example.com,localhost"
+            DOCKER_STEPCA_INIT_ACME: "true"
+            DOCKER_STEPCA_INIT_PASSWORD: "test-pass"
+          healthcheck:
+            test: ["CMD", "wget", "-qO-", "--no-check-certificate",
+                   "https://localhost:9000/health"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+          traefik:
+            port: 9000
+            scheme: https
+
+        apt-cacher-ng:
+          priority: 20
+          image: "mbentley/apt-cacher-ng:latest"
+          ports:
+            - "3142:3142"
+          environment:
+            TZ: "America/Toronto"
+          volumes:
+            - "/opt/containers/apt-cacher-ng/cache:/var/cache/apt-cacher-ng"
+          traefik: false
+
+        netbootxyz:
+          priority: 30
+          dns_name: xyz
+          image: "netbootxyz/netbootxyz:latest"
+          ports:
+            - "69:69/udp"
+          volumes:
+            - "/opt/containers/netbootxyz/config:/config"
+            - "/opt/containers/netbootxyz/assets:/assets"
+          traefik:
+            routes:
+              - rule: "Host(`xyz.util.example.com`) || Host(`192.168.254.5`)"
+                entrypoint: web
+                port: 80
+              - rule: "Host(`xyz.util.example.com`)"
+                entrypoint: websecure
+                port: 3000
+                tls: true
+
+    ###########################################################################
+    # MEDIA — exercises PXE provisioning, imports, gluetun tunneling
+    ###########################################################################
+    media:
+      priority: 20
+      ansible_host: media.example.com
+      ansible_python_interpreter: "/usr/bin/python3"
+      import:
+        - name: root_ca_cert
+          dest: /opt/certs/root_ca.crt
+
+      provision:
+        type: vm
+        manager: vmware
+        method: pxe
+        reprovision: false
+        validate:
+          port: 22
+        hardware:
+          os: ubuntu
+          cpus: 2
+          ram_mb: 8192
+          disks:
+            - size_gb: 100
+              datastore: SSD_SHARE
+              type: thin
+          networks:
+            - name: "DMZ"
+              provider: unifi
+              type: vmxnet3
+              ip: 192.168.255.34
+              netmask: 29
+              gateway: 192.168.255.33
+          dns:
+            servers:
+              - server: 192.168.254.1
+            domain: example.com
+        manager_infra:
+          datacenter: "TestDC"
+          cluster: "TestCluster"
+          resource_pool: "/"
+          folder: "/TestDC/vm/"
+          guest_id: "ubuntu64Guest"
+        mounts:
+          - src: nas.example.com:/volume4/Plex
+            path: /media/plex
+            type: nfs
+            options: defaults,vers=4.1,auto,_netdev,hard,intr
+
+      services:
+        traefik:
+          priority: 0
+          type: infrastructure
+          config:
+            acme_ca: "https://ca.util.example.com/acme/acme/directory"
+            acme_email: "admin@example.com"
+            entrypoints:
+              web: 80
+              websecure: 443
+            certs_volume: "/opt/containers/traefik/letsencrypt"
+            ca_cert_path: "/opt/certs/root_ca.crt"
+
+        gluetun:
+          priority: 5
+          type: infrastructure
+          config:
+            vpn_provider: "nordvpn"
+            vpn_type: "openvpn"
+            vpn_user: "fake-vpn-user"
+            vpn_password: "fake-vpn-pass"
+            server_countries: "Canada"
+            firewall_outbound_subnets: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+
+        qbittorrent:
+          priority: 10
+          image: "sxyzy1016/qbittorrent-enhanced-edition:latest"
+          dns_name: qbt
+          network_mode: "service:gluetun"
+          depends_on:
+            gluetun:
+              condition: service_healthy
+          environment:
+            PUID: "1028"
+            PGID: "100"
+            TZ: "America/Chicago"
+            WEBUI_PORT: "8080"
+          volumes:
+            - "/opt/containers/qbittorrent:/config"
+            - "/media/plex:/data"
+          traefik:
+            port: 8080
+
+        radarr:
+          priority: 20
+          image: "lscr.io/linuxserver/radarr:latest"
+          dns_name: radarr
+          environment:
+            PUID: "1028"
+            PGID: "100"
+            TZ: "America/Chicago"
+          volumes:
+            - "/opt/containers/radarr:/config"
+            - "/media/plex:/data"
+          traefik:
+            port: 7878
+
+        recyclarr:
+          priority: 45
+          image: "ghcr.io/recyclarr/recyclarr:latest"
+          traefik: false
+          environment:
+            TZ: "America/Chicago"
+            CRON_SCHEDULE: "0 */6 * * *"
+          volumes:
+            - "/opt/containers/recyclarr:/config"

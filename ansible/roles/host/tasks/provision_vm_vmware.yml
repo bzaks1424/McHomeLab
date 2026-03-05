@@ -44,7 +44,7 @@
 - name: "Set VM MAC address facts"
   ansible.builtin.set_fact:
     host_vm_mac: "{{ host_vm_info_post_create.guests[0].hw_eth0.macaddress }}"
-    host_vm_mac_raw: "{{ host_vm_info_post_create.guests[0].hw_eth0.macaddress | replace(':','') | upper }}"
+    host_vm_mac_raw: "{{ host_vm_info_post_create.guests[0].hw_eth0.macaddress | replace(':', '') | upper }}"
 
 # 3. Provision boot environment (method-specific)
 #    ISO: builds custom ISO on controller, attaches to VM CD-ROM

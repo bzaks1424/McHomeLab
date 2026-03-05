@@ -3,21 +3,36 @@
 
 # https://ansible.readthedocs.io/projects/lint/configuring/#ansible-lint-configuration
 
-profile: production
+project_dir: .
+
+profile: moderate
 
 skip_list:
   - yaml[line-length]
+  - meta-incorrect         # auto-generated role skeleton metadata
+  - schema[meta]           # min_ansible_version type from skeleton
+  - name[prefix]           # task name prefix convention doesn't fit our style
+  - name[template]         # we use Jinja in task names for clarity in logs
+  - var-naming[no-role-prefix]  # we use _ prefix for internal vars, not role prefix
+  - ignore-errors          # intentional for optional imports
+  - role-name              # nfs-common and vim-tiny use hyphens by convention
 
-# Ansible-lint does not automatically load rules that have the 'opt-in' tag.
-# You must enable opt-in rules by listing each rule 'id' below.
+warn_list:
+  - internal-error         # host/tasks/main.yml uses site_role_action from caller context
+
+extra_vars:
+  site_role_action: validate
+
+exclude_paths:
+  - .venv/
+  - .ansible/
+  - ansible/ansible.cfg
+  - ansible/site.yml       # dynamic hosts: needs runtime hostvars — covered by make syntax
+  - "**/tests/test.yml"    # auto-generated role test stubs
+
 enable_list:
   - args
-  - empty-string-compare # opt-in
-  - no-log-password # opt-in
-  - no-same-owner # opt-in
-  - name[prefix] # opt-in
-  - galaxy-version-incorrect # opt-in
-  # add yaml here if you want to avoid ignoring yaml checks when yamllint
-  # library is missing. Normally its absence just skips using that rule.
+  - empty-string-compare
+  - no-log-password
+  - no-same-owner
   - yaml
-

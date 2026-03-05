@@ -1,0 +1,89 @@
+---
+# Import files and variables from the registry to the current host.
+# Runs in the context of the importing host (SSH connection).
+#
+# Reads: hostvars[inventory_hostname]['import']
+# Each import entry:
+#   - name:     registry key to look up (required)
+#   - dest:     destination path on host (required for file imports)
+#   - required: whether import must exist in registry (default: true)
+#   - mode:     file permissions (default: '0644')
+#   - owner:    file owner (default: ansible_user)
+#   - group:    file group (default: ansible_user)
+#
+# The 'type' is determined by the registry entry, not the import declaration.
+# File imports: copy from controller to host
+# Var imports:  set as a host fact (accessible as {{ var_name }})
+#
+# Example inventory:
+#   import:
+#     - name: root_ca_cert
+#       dest: /opt/certs/root_ca.crt
+#     - name: step_ca_fingerprint
+#       required: false
+
+- name: "Gather imports for {{ inventory_hostname }}"
+  ansible.builtin.set_fact:
+    _host_imports: "{{ hostvars[inventory_hostname]['import'] | default([]) }}"
+
+- name: "Process imports for {{ inventory_hostname }}"
+  when: _host_imports | length > 0
+  block:
+    # --- Validate required imports exist in registry ---
+    - name: "Validate required imports"
+      ansible.builtin.fail:
+        msg: >-
+          Required import '{{ item.name }}' not found in registry.
+          Available keys: {{ hostvars['localhost'].registry.keys() | list }}
+      when:
+        - (item.required | default(true)) | bool
+        - item.name not in (hostvars['localhost'].registry | default({}))
+      loop: "{{ _host_imports }}"
+      loop_control:
+        label: "{{ item.name }} (required: {{ item.required | default(true) }})"
+
+    # --- Filter to imports that actually exist in registry ---
+    - name: "Identify available imports"
+      ansible.builtin.set_fact:
+        _available_imports: >-
+          {{ _host_imports
+             | selectattr('name', 'in', hostvars['localhost'].registry | default({}))
+             | list }}
+
+    # --- Validate file imports have a destination ---
+    - name: "Validate file imports have 'dest' field"
+      ansible.builtin.fail:
+        msg: "File import '{{ item.name }}' requires a 'dest' field"
+      when:
+        - hostvars['localhost'].registry[item.name].type == 'file'
+        - item.dest is not defined
+      loop: "{{ _available_imports }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # --- File imports: copy from controller to host ---
+    # Staleness handling:
+    #   required + stale file → copy fails → play stops (correct)
+    #   optional + stale file → copy fails → error ignored (skip gracefully)
+    - name: "Import file '{{ item.name }}' to {{ inventory_hostname }}"
+      ansible.builtin.copy:
+        src: "{{ hostvars['localhost'].registry[item.name].value }}"
+        dest: "{{ item.dest }}"
+        mode: "{{ item.mode | default('0644') }}"
+        owner: "{{ item.owner | default(ansible_user) }}"
+        group: "{{ item.group | default(ansible_user) }}"
+      loop: "{{ _available_imports }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: hostvars['localhost'].registry[item.name].type == 'file'
+      ignore_errors: "{{ not (item.required | default(true) | bool) }}"
+
+    # --- Var imports: set as host facts ---
+    # After this, the variable is available as {{ var_name }} on the host.
+    - name: "Import var '{{ item.name }}' to {{ inventory_hostname }}"
+      ansible.builtin.set_fact:
+        "{{ item.name }}": "{{ hostvars['localhost'].registry[item.name].value }}"
+      loop: "{{ _available_imports }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: hostvars['localhost'].registry[item.name].type == 'var'

@@ -1,0 +1,85 @@
+---
+# Initialize the registry: load from disk, purge stale file entries.
+# Runs on localhost during Play 0 (Initialize).
+#
+# After this task file completes:
+#   - hostvars['localhost'].registry is populated (dict)
+#   - Stale file entries (path no longer exists on disk) are purged
+#   - Cleaned registry is saved back to disk
+
+- name: "Ensure export root directory exists"
+  ansible.builtin.file:
+    path: "{{ export_root }}"
+    state: directory
+    mode: "0755"
+
+- name: "Check for existing registry"
+  ansible.builtin.stat:
+    path: "{{ registry_path }}"
+  register: _registry_file
+
+- name: "Load registry from disk"
+  when: _registry_file.stat.exists
+  block:
+    - name: "Read registry.json"
+      ansible.builtin.slurp:
+        src: "{{ registry_path }}"
+      register: _registry_raw
+
+    - name: "Parse registry"
+      ansible.builtin.set_fact:
+        registry: "{{ _registry_raw.content | b64decode | from_json }}"
+
+- name: "Initialize empty registry"
+  when: not _registry_file.stat.exists
+  ansible.builtin.set_fact:
+    registry: {}
+
+# --- Purge stale file entries ---
+# A file entry is "stale" if the path recorded in registry no longer exists on disk.
+# This handles cases where files were manually deleted or a previous run was interrupted.
+
+- name: "Identify file entries in registry"
+  ansible.builtin.set_fact:
+    _registry_file_entries: >-
+      {{ registry | dict2items
+         | selectattr('value.type', 'eq', 'file')
+         | list }}
+
+- name: "Purge stale file entries"
+  when: _registry_file_entries | length > 0
+  block:
+    - name: "Check file exports still exist on disk"
+      ansible.builtin.stat:
+        path: "{{ item.value.value }}"
+      loop: "{{ _registry_file_entries }}"
+      loop_control:
+        label: "{{ item.key }}: {{ item.value.value }}"
+      register: _file_checks
+
+    - name: "Remove stale entries from registry"
+      when: _stale_keys | length > 0
+      block:
+        - name: "Purging stale entries"
+          ansible.builtin.debug:
+            msg: "Removing stale registry entries: {{ _stale_keys }}"
+
+        - name: "Rebuild registry without stale entries"
+          ansible.builtin.set_fact:
+            registry: >-
+              {{ registry | dict2items
+                 | rejectattr('key', 'in', _stale_keys)
+                 | items2dict }}
+      vars:
+        _stale_keys: >-
+          {{ _file_checks.results
+             | rejectattr('stat.exists')
+             | map(attribute='item.key')
+             | list }}
+
+- name: "Save cleaned registry"
+  ansible.builtin.include_tasks: save.yml
+
+- name: "Registry initialized"
+  ansible.builtin.debug:
+    msg: "{{ registry | length }} entries loaded: {{ registry.keys() | list }}"

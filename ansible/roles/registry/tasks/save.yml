@@ -1,0 +1,10 @@
+---
+# Persist the registry to disk as JSON.
+# Can be called from any host context — always writes to controller (localhost).
+- name: "Persist registry to disk"
+  ansible.builtin.copy:
+    content: "{{ hostvars['localhost'].registry | to_nice_json }}\n"
+    dest: "{{ registry_path }}"
+    mode: "0644"
+  delegate_to: localhost
+  become: false

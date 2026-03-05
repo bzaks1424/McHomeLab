@@ -1,54 +1,84 @@
 ---
-- name: "Build execution order"
+###############################################################################
+# site.yml — Merged-play structure with persistent registry
+#
+# Play 0: Initialize — build order + load/purge registry
+# Play 1: Controller — configure + export vars to registry
+# Play 2: Build      — each host serial:1, full V/P/I/C/E lifecycle
+#
+# Each host fully completes before the next starts.
+# Priority field = dependency order (lower runs first).
+###############################################################################
+
+- name: "Initialize"
   hosts: localhost
   connection: local
   gather_facts: false
   tasks:
     - name: "Sort hosts by priority"
       ansible.builtin.set_fact:
-        build_hosts: "{{ groups['all'] | reject('equalto', 'controller') | map('extract', hostvars) | sort(attribute='priority') | map(attribute='inventory_hostname') | list }}"
+        build_hosts: >-
+          {{ groups['all']
+             | reject('equalto', 'controller')
+             | map('extract', hostvars)
+             | sort(attribute='priority')
+             | map(attribute='inventory_hostname')
+             | list }}
 
-    - name: "Collect exports from all hosts"
-      ansible.builtin.set_fact:
-        _export_pairs: "{{ _export_pairs | default([]) + (hostvars[item]['export'] | default([]) | map('combine', {'_host': item}) | list) }}"
-      loop: "{{ groups['all'] }}"
-      loop_control:
-        label: "{{ item }}"
-
-    - name: "Build export registry"
-      ansible.builtin.set_fact:
-        export_registry: "{{ export_registry | default({}) | combine({item.name: item._host}) }}"
-      loop: "{{ _export_pairs | default([]) }}"
-      loop_control:
-        label: "{{ item.name }} -> {{ item._host }}"
-      when: _export_pairs is defined and _export_pairs | length > 0
+    - name: "Initialize registry"
+      ansible.builtin.include_role:
+        name: registry
+        tasks_from: init
 
 - name: "Configure Controller"
   hosts: controller
   gather_facts: false
   connection: local
-  run_once: true # Cause its the controller
+  run_once: true
   become: true
   roles:
     - controller
+  post_tasks:
+    - name: "Export controller values to registry"
+      ansible.builtin.include_role:
+        name: registry
+        tasks_from: export
 
-- name: "Validate (and Provision)"
+- name: "Build"
   hosts: "{{ hostvars['localhost'].build_hosts }}"
   serial: 1
   gather_facts: false
   become: true
-  connection: local
-  roles:
-    - host
-  vars:
-    site_role_action: "validate"
+  tasks:
+    # --- Validate & Provision (local connection) ---
+    - name: "Validate {{ inventory_hostname }}"
+      ansible.builtin.include_role:
+        name: host
+        tasks_from: validate
+      vars:
+        ansible_connection: local
+        site_role_action: validate
 
-- name: "Configure"
-  hosts: "{{ hostvars['localhost'].build_hosts }}"
-  serial: 1
-  gather_facts: true
-  become: true
-  roles:
-    - host
-  vars:
-    site_role_action: "configure"
+    # --- Gather facts (SSH to host) ---
+    - name: "Gather host facts"
+      ansible.builtin.setup:
+
+    # --- Import from registry ---
+    - name: "Import to {{ inventory_hostname }}"
+      ansible.builtin.include_role:
+        name: registry
+        tasks_from: import
+
+    # --- Configure via BTF ---
+    - name: "Configure {{ inventory_hostname }}"
+      ansible.builtin.include_role:
+        name: host
+        tasks_from: configure
+      vars:
+        site_role_action: configure
+
+    # --- Export to registry ---
+    - name: "Export from {{ inventory_hostname }}"
+      ansible.builtin.include_role:
+        name: registry
+        tasks_from: export

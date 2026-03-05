@@ -1,0 +1,3 @@
+---
+# Registry configuration
+registry_path: "{{ export_root }}/registry.json"

@@ -27,8 +27,8 @@
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
-    owner: "mchomelab-user"
-    group: "mchomelab-user"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
     mode: "0755"
   loop:
     - "{{ host_provision_pxe_autoinstall_dir }}"
@@ -39,16 +39,16 @@
   ansible.builtin.template:
     src: "nocloud/user-data.j2"
     dest: "{{ host_provision_pxe_autoinstall_dir }}/user-data"
-    owner: "mchomelab-user"
-    group: "mchomelab-user"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
     mode: "0644"
 
 - name: "Template meta-data for {{ inventory_hostname }}"
   ansible.builtin.template:
     src: "nocloud/meta-data.j2"
     dest: "{{ host_provision_pxe_autoinstall_dir }}/meta-data"
-    owner: "mchomelab-user"
-    group: "mchomelab-user"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
     mode: "0644"
 
 # 3. Template per-MAC iPXE script — netboot.xyz auto-discovers MAC-{hexraw}.ipxe.
@@ -58,7 +58,7 @@
   ansible.builtin.template:
     src: "pxe/custom.ipxe.j2"
     dest: "{{ host_provision_pxe_config_dir }}/menus/MAC-{{ host_vm_mac | replace(':', '') }}.ipxe"
-    owner: "mchomelab-user"
-    group: "mchomelab-user"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
     mode: "0644"
 ###############################################################################################################################################################

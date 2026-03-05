@@ -1,0 +1,76 @@
+---
+# Export files and variables from the current host to the registry.
+# Runs in the context of the exporting host (SSH or local connection).
+#
+# Reads: hostvars[inventory_hostname]['export']
+# Each export entry requires:
+#   - name: registry key name
+#   - type: 'file' or 'var'
+#   - src:  (file only) path on the remote host to fetch
+#   - value: (var only) the value to store
+#
+# File exports are fetched to {{ export_root }}/{{ inventory_hostname }}/{{ name }}
+# Var exports are recorded directly in registry.json
+#
+# Example inventory:
+#   export:
+#     - name: root_ca_cert
+#       type: file
+#       src: /opt/containers/step-ca/certs/root_ca.crt
+#     - name: pxe_base_url
+#       type: var
+#       value: "http://xyz.{{ ansible_host }}"
+
+- name: "Gather exports for {{ inventory_hostname }}"
+  ansible.builtin.set_fact:
+    _host_exports: "{{ hostvars[inventory_hostname]['export'] | default([]) }}"
+
+- name: "Process exports for {{ inventory_hostname }}"
+  when: _host_exports | length > 0
+  block:
+    # --- File exports: fetch from host to controller ---
+    - name: "Ensure export directory on controller"
+      ansible.builtin.file:
+        path: "{{ export_root }}/{{ inventory_hostname }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      become: false
+      when: _host_exports | selectattr('type', 'eq', 'file') | list | length > 0
+
+    - name: "Fetch file '{{ item.name }}' from {{ inventory_hostname }}"
+      ansible.builtin.fetch:
+        src: "{{ item.src }}"
+        dest: "{{ export_root }}/{{ inventory_hostname }}/{{ item.name }}"
+        flat: true
+      loop: "{{ _host_exports | selectattr('type', 'eq', 'file') | list }}"
+      loop_control:
+        label: "{{ item.name }} ({{ item.src }})"
+
+    # --- Build combined registry entries for all exports ---
+    - name: "Build export entries"
+      ansible.builtin.set_fact:
+        _export_entries: >-
+          {{ _export_entries | default({}) | combine({
+               item.name: {
+                 'type': item.type,
+                 'value': (export_root ~ '/' ~ inventory_hostname ~ '/' ~ item.name)
+                          if item.type == 'file'
+                          else item.value,
+                 'from': inventory_hostname
+               }
+             }) }}
+      loop: "{{ _host_exports }}"
+      loop_control:
+        label: "{{ item.name }} ({{ item.type }})"
+
+    # --- Update registry on localhost ---
+    - name: "Update registry with {{ _export_entries | length }} exports from {{ inventory_hostname }}"
+      ansible.builtin.set_fact:
+        registry: "{{ hostvars['localhost'].registry | combine(_export_entries) }}"
+      delegate_to: localhost
+      delegate_facts: true
+
+    # --- Persist to disk ---
+    - name: "Save registry"
+      ansible.builtin.include_tasks: save.yml

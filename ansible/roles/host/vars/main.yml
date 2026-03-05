@@ -18,6 +18,3 @@ host_docker_image: "{{ hostvars[inventory_hostname].provision.hardware.image | d
 host_docker_name: "{{ hostvars[inventory_hostname].provision.hardware.name | default('') }}"
 host_docker_ports: "{{ hostvars[inventory_hostname].provision.hardware.ports | default([]) }}"
 host_docker_volumes: "{{ hostvars[inventory_hostname].provision.hardware.volumes | default([]) }}"
-# Import/Export — bracket notation because 'import' is a Python reserved keyword
-host_import: "{{ hostvars[inventory_hostname]['import'] | default([]) }}"
-host_export: "{{ hostvars[inventory_hostname]['export'] | default([]) }}"

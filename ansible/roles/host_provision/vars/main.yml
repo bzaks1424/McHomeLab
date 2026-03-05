@@ -6,13 +6,11 @@ host_provision_ssh_pub_key_path: "{{ ansible_ssh_private_key_file }}.pub"
 host_provision_networks: "{{ hostvars[inventory_hostname].provision.hardware.networks | default([]) }}"
 host_provision_dns_servers: "{{ hostvars[inventory_hostname].provision.hardware.dns.servers | default([]) }}"
 
-# ISO-specific — safe to define always (only referenced in iso.yml)
-host_provision_iso_dir: "{{ hostvars['controller'].provision.vars.iso_root }}"
+# ISO-specific — registry_get returns None if key missing (safe when not using ISO method)
+host_provision_iso_dir: "{{ hostvars['localhost'].registry | registry_get('iso_root') }}"
 
-# PXE-specific — safe to define always (only referenced in pxe.yml)
-# Paths point to NFS mount (HDD_SHARE) — accessible from controller and all VMs
-host_provision_pxe_assets_dir: "/mnt/HDD_SHARE/containers/util/netbootxyz/assets"
-host_provision_pxe_config_dir: "/mnt/HDD_SHARE/containers/util/netbootxyz/config"
-host_provision_pxe_base_url: "http://xyz.{{ hostvars['util'].ansible_host }}"
+# PXE-specific — registry_get returns None if key missing (safe when not using PXE method)
+host_provision_pxe_assets_dir: "{{ hostvars['localhost'].registry | registry_get('pxe_assets_dir') }}"
+host_provision_pxe_config_dir: "{{ hostvars['localhost'].registry | registry_get('pxe_config_dir') }}"
+host_provision_pxe_base_url: "{{ hostvars['localhost'].registry | registry_get('pxe_base_url') }}"
 host_provision_pxe_autoinstall_dir: "{{ host_provision_pxe_assets_dir }}/autoinstall/{{ inventory_hostname }}"
-###############################################################################################################################################################

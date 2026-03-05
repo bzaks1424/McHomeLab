@@ -1,5 +1,4 @@
 ---
-# vars file for {{ role_name }}
-iso_path: "{{ hostvars['controller'].provision.vars.iso_root }}/{{ iso_file_name }}"
+# vars file for iso role
+iso_path: "{{ hostvars['localhost'].registry | registry_get('iso_root') }}/{{ iso_file_name }}"
 iso_mode: "{{ iso_mode_default }}"
-###############################################################################################################################################################

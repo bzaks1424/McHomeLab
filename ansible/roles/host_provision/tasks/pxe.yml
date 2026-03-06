@@ -53,7 +53,7 @@
 
 # 3. Template per-MAC iPXE script — netboot.xyz auto-discovers MAC-{hexraw}.ipxe.
 #    If the file exists for this MAC, the host autoinstalls. If not, normal menu loads.
-#    Owner must be mchomelab-user (UID 1000 = nbxyz inside container) for --tftp-secure.
+#    Owner must be ansible_user (UID 1000 = nbxyz inside container) for --tftp-secure.
 - name: "Template MAC-{{ host_vm_mac | replace(':', '') }}.ipxe for {{ inventory_hostname }}"
   ansible.builtin.template:
     src: "pxe/custom.ipxe.j2"

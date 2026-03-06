@@ -81,12 +81,12 @@ all:
             - name: "MGMT-V"
               provider: unifi
               type: vmxnet3
-              ip: 192.168.254.5
+              ip: 10.10.10.10
               netmask: 24
-              gateway: 192.168.254.1
+              gateway: 10.10.10.1
           dns:
             servers:
-              - server: 192.168.254.1
+              - server: 10.10.10.1
             domain: example.com
         manager_infra:
           datacenter: "TestDC"
@@ -159,7 +159,7 @@ all:
             - "/opt/containers/netbootxyz/assets:/assets"
           traefik:
             routes:
-              - rule: "Host(`xyz.util.example.com`) || Host(`192.168.254.5`)"
+              - rule: "Host(`xyz.util.example.com`) || Host(`10.10.10.10`)"
                 entrypoint: web
                 port: 80
               - rule: "Host(`xyz.util.example.com`)"
@@ -197,12 +197,12 @@ all:
             - name: "DMZ"
               provider: unifi
               type: vmxnet3
-              ip: 192.168.255.34
+              ip: 10.10.20.2
               netmask: 29
-              gateway: 192.168.255.33
+              gateway: 10.10.20.1
           dns:
             servers:
-              - server: 192.168.254.1
+              - server: 10.10.10.1
             domain: example.com
         manager_infra:
           datacenter: "TestDC"

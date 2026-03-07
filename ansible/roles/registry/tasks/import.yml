@@ -61,6 +61,19 @@
       loop_control:
         label: "{{ item.name }}"
 
+    # --- Ensure destination directories exist ---
+    - name: "Create destination directories for file imports"
+      ansible.builtin.file:
+        path: "{{ item.dest | dirname }}"
+        state: directory
+        mode: "0755"
+      loop: "{{ _available_imports }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when:
+        - hostvars['localhost'].registry[item.name].type == 'file'
+        - item.dest is defined
+
     # --- File imports: copy from controller to host ---
     # Staleness handling:
     #   required + stale file → copy fails → play stops (correct)

@@ -10,7 +10,11 @@ host_provision_dns_servers: "{{ hostvars[inventory_hostname].provision.hardware.
 host_provision_iso_dir: "{{ hostvars['localhost'].registry | registry_get('iso_root') }}"
 
 # PXE-specific — registry_get returns None if key missing (safe when not using PXE method)
+host_provision_pxe_server: "{{ hostvars['localhost'].registry | registry_get('pxe_server') }}"
 host_provision_pxe_assets_dir: "{{ hostvars['localhost'].registry | registry_get('pxe_assets_dir') }}"
 host_provision_pxe_config_dir: "{{ hostvars['localhost'].registry | registry_get('pxe_config_dir') }}"
 host_provision_pxe_base_url: "{{ hostvars['localhost'].registry | registry_get('pxe_base_url') }}"
 host_provision_pxe_autoinstall_dir: "{{ host_provision_pxe_assets_dir }}/autoinstall/{{ inventory_hostname }}"
+
+# PXE staging — local directory where pxe.yml writes files before export pushes them
+host_provision_pxe_staging_dir: "{{ export_root }}/pxe_staging/{{ inventory_hostname }}"

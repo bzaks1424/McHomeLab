@@ -55,6 +55,36 @@
   vars:
     host_provision_os: "{{ host_os }}"
 
+# 3b. Push PXE boot files to PXE server via export system
+#     pxe.yml staged files locally; now push them to util where netbootxyz serves them.
+#     host_provision vars don't persist after include_role, so we inline registry lookups.
+- name: "Push PXE boot files to PXE server"
+  when: host_provision_method == 'pxe'
+  ansible.builtin.include_role:
+    name: registry
+    tasks_from: export
+  vars:
+    _pxe_server: "{{ hostvars['localhost'].registry | registry_get('pxe_server') }}"
+    _pxe_config_dir: "{{ hostvars['localhost'].registry | registry_get('pxe_config_dir') }}"
+    _pxe_assets_dir: "{{ hostvars['localhost'].registry | registry_get('pxe_assets_dir') }}"
+    _pxe_staging: "{{ export_root }}/pxe_staging/{{ inventory_hostname }}"
+    _host_exports_override:
+      - name: "pxe_ipxe_{{ inventory_hostname }}"
+        type: file
+        src: "{{ _pxe_staging }}/menus/MAC-{{ host_vm_mac | replace(':', '') }}.ipxe"
+        dest: "{{ _pxe_server }}"
+        dest_path: "{{ _pxe_config_dir }}/menus/MAC-{{ host_vm_mac | replace(':', '') }}.ipxe"
+      - name: "pxe_userdata_{{ inventory_hostname }}"
+        type: file
+        src: "{{ _pxe_staging }}/autoinstall/user-data"
+        dest: "{{ _pxe_server }}"
+        dest_path: "{{ _pxe_assets_dir }}/autoinstall/{{ inventory_hostname }}/user-data"
+      - name: "pxe_metadata_{{ inventory_hostname }}"
+        type: file
+        src: "{{ _pxe_staging }}/autoinstall/meta-data"
+        dest: "{{ _pxe_server }}"
+        dest_path: "{{ _pxe_assets_dir }}/autoinstall/{{ inventory_hostname }}/meta-data"
+
 # 4. Power on VM (ISO boots from CD, PXE boots from network)
 - name: "Power on VM {{ inventory_hostname }}"
   delegate_to: localhost

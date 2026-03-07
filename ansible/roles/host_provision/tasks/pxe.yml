@@ -1,64 +1,48 @@
 ---
-# PXE method: template per-MAC iPXE boot script + autoinstall config on NFS
+# PXE method: template per-MAC iPXE boot script + autoinstall config locally.
+# Files are staged on the controller; provision_vm_vmware.yml pushes them
+# to the PXE server via the export system before powering on the VM.
 #
 # Prerequisites:
-#   - util must be running (netbootxyz container with TFTP + HTTP)
-#   - host_vm_mac / host_vm_mac_raw facts must be set (by provision_vm_vmware.yml)
-#   - DHCP must have network boot configured (next-server → util, filename → netboot.xyz.kpxe)
-#   - HDD_SHARE NFS mount must be available on controller
+#   - host_vm_mac fact must be set (by provision_vm_vmware.yml)
+#   - Registry must contain: pxe_config_dir, pxe_assets_dir, pxe_base_url
 #
-# What we host on util (via NFS):
-#   - /config/menus/MAC-XXXXXXXXXXXX.ipxe — per-MAC iPXE script (filename is the MAC gate)
-#   - /assets/autoinstall/{hostname}/user-data — autoinstall config
-#   - /assets/autoinstall/{hostname}/meta-data — empty (required by cloud-init)
-#
-# What the VM downloads from the internet at boot time:
-#   - vmlinuz + initrd from netboot.xyz GitHub CDN (~90MB)
-#   - Ubuntu live server ISO from releases.ubuntu.com (~2.6GB)
+# What we stage locally (under host_provision_pxe_staging_dir):
+#   - menus/MAC-XXXXXXXXXXXX.ipxe — per-MAC iPXE script
+#   - autoinstall/user-data — autoinstall config
+#   - autoinstall/meta-data — empty (required by cloud-init)
 #
 # netboot.xyz v3 has built-in per-MAC boot: it tries MAC-{hexraw}.ipxe then
-# MAC-{hexhyp}.ipxe before falling to the default menu. No boot.cfg changes needed.
+# MAC-{hexhyp}.ipxe before falling to the default menu.
 #
 # Parallel-safe: each host gets its own MAC-named file, no conflicts.
-#
 
-# 1. Ensure directories exist on NFS
-- name: "Ensure PXE directories exist for {{ inventory_hostname }}"
+# 1. Ensure local staging directories exist
+- name: "Ensure PXE staging directories for {{ inventory_hostname }}"
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
     mode: "0755"
   loop:
-    - "{{ host_provision_pxe_autoinstall_dir }}"
-    - "{{ host_provision_pxe_config_dir }}/menus"
+    - "{{ host_provision_pxe_staging_dir }}/autoinstall"
+    - "{{ host_provision_pxe_staging_dir }}/menus"
 
-# 2. Template per-host autoinstall files (shared user-data.j2 template)
+# 2. Template per-host autoinstall files
 - name: "Template user-data for {{ inventory_hostname }}"
   ansible.builtin.template:
     src: "nocloud/user-data.j2"
-    dest: "{{ host_provision_pxe_autoinstall_dir }}/user-data"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
+    dest: "{{ host_provision_pxe_staging_dir }}/autoinstall/user-data"
     mode: "0644"
 
 - name: "Template meta-data for {{ inventory_hostname }}"
   ansible.builtin.template:
     src: "nocloud/meta-data.j2"
-    dest: "{{ host_provision_pxe_autoinstall_dir }}/meta-data"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
+    dest: "{{ host_provision_pxe_staging_dir }}/autoinstall/meta-data"
     mode: "0644"
 
-# 3. Template per-MAC iPXE script — netboot.xyz auto-discovers MAC-{hexraw}.ipxe.
-#    If the file exists for this MAC, the host autoinstalls. If not, normal menu loads.
-#    Owner must be ansible_user (UID 1000 = nbxyz inside container) for --tftp-secure.
+# 3. Template per-MAC iPXE script
 - name: "Template MAC-{{ host_vm_mac | replace(':', '') }}.ipxe for {{ inventory_hostname }}"
   ansible.builtin.template:
     src: "pxe/custom.ipxe.j2"
-    dest: "{{ host_provision_pxe_config_dir }}/menus/MAC-{{ host_vm_mac | replace(':', '') }}.ipxe"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
+    dest: "{{ host_provision_pxe_staging_dir }}/menus/MAC-{{ host_vm_mac | replace(':', '') }}.ipxe"
     mode: "0644"
-###############################################################################################################################################################

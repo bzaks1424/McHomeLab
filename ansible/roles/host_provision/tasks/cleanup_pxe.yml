@@ -1,8 +1,11 @@
 ---
-# PXE cleanup: remove per-MAC iPXE script so future PXE boots show the normal netboot.xyz menu
-- name: "Remove MAC-{{ host_vm_mac | replace(':', '') }}.ipxe for {{ inventory_hostname }}"
-  ansible.builtin.file:
-    path: "{{ host_provision_pxe_config_dir }}/menus/MAC-{{ host_vm_mac | replace(':', '') }}.ipxe"
-    state: absent
+# PXE cleanup: remove per-MAC iPXE script from PXE server so future boots show normal menu.
+# Uses shell+ssh because ansible_connection: local prevents delegate_to from reaching remote hosts.
+- name: "Remove MAC-{{ host_vm_mac | replace(':', '') }}.ipxe from {{ host_provision_pxe_server }}"
+  ansible.builtin.shell: >
+    ssh {{ ansible_user }}@{{ host_provision_pxe_server }}
+    "rm -f '{{ host_provision_pxe_config_dir }}/menus/MAC-{{ host_vm_mac | replace(':', '') }}.ipxe'"
+  delegate_to: localhost
+  become: false
+  changed_when: true
 # Keep per-host autoinstall dir (user-data/meta-data) for reprovisioning reference
-###############################################################################################################################################################

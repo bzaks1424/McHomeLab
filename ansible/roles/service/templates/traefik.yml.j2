@@ -22,6 +22,7 @@
       - "--certificatesresolvers.step-ca.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.step-ca.acme.tlschallenge=true"
       - "--serversTransport.insecureSkipVerify=true"
+      - "--ping=true"
     ports:
 {% for ep_name, ep_port in config.entrypoints.items() %}
       - "{{ ep_port }}:{{ ep_port }}"
@@ -37,6 +38,12 @@
 {% if ca_cert_host_path is defined %}
       - "{{ ca_cert_host_path }}:/etc/ssl/certs/step-ca-root.crt:ro"
 {% endif %}
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 {% if config.depends_on is defined %}
     depends_on:
 {% for dep_name, dep_config in config.depends_on.items() %}

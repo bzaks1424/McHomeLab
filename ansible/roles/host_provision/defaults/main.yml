@@ -2,4 +2,17 @@
 # defaults file for host_provision
 host_provision_mode_default: '0644'
 host_provision_template_mode_default: '0755'
-###############################################################################################################################################################
+
+# Default LVM mounts — always present unless overridden by path in provision.mounts
+host_provision_lvm_defaults:
+  - path: /
+    type: lvm
+    size_gb: 10
+    fstype: ext4
+  - path: /var
+    type: lvm
+    size_gb: 5
+    fstype: ext4
+
+# Fixed partitions consumed before LVM (1G bios_grub + 2G boot)
+host_provision_reserved_disk_gb: 3

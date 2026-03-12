@@ -78,7 +78,7 @@
     # Staleness handling:
     #   required + stale file → copy fails → play stops (correct)
     #   optional + stale file → copy fails → error ignored (skip gracefully)
-    - name: "Import file '{{ item.name }}' to {{ inventory_hostname }}"
+    - name: "Import files to {{ inventory_hostname }}"
       ansible.builtin.copy:
         src: "{{ hostvars['localhost'].registry[item.name].value }}"
         dest: "{{ item.dest }}"
@@ -93,7 +93,7 @@
 
     # --- Var imports: set as host facts ---
     # After this, the variable is available as {{ var_name }} on the host.
-    - name: "Import var '{{ item.name }}' to {{ inventory_hostname }}"
+    - name: "Import var to {{ inventory_hostname }}"
       ansible.builtin.set_fact:
         "{{ item.name }}": "{{ hostvars['localhost'].registry[item.name].value }}"
       loop: "{{ _available_imports }}"

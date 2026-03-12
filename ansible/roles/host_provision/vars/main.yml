@@ -18,3 +18,30 @@ host_provision_pxe_autoinstall_dir: "{{ host_provision_pxe_assets_dir }}/autoins
 
 # PXE staging — local directory where pxe.yml writes files before export pushes them
 host_provision_pxe_staging_dir: "{{ export_root }}/pxe_staging/{{ inventory_hostname }}"
+
+# --- LVM mount merge logic ---
+# Extract LVM entries from inventory mounts
+_host_provision_inventory_lvm: >-
+  {{ hostvars[inventory_hostname].provision.mounts | default([])
+     | selectattr('type', 'eq', 'lvm') | list }}
+
+# Paths the inventory explicitly defines (used to suppress defaults)
+_host_provision_inventory_lvm_paths: >-
+  {{ _host_provision_inventory_lvm | map(attribute='path') | list }}
+
+# Defaults NOT overridden by inventory
+_host_provision_lvm_remaining_defaults: >-
+  {{ host_provision_lvm_defaults
+     | rejectattr('path', 'in', _host_provision_inventory_lvm_paths) | list }}
+
+# Final merged list: inventory LVM + non-overridden defaults
+host_provision_lvm_mounts: >-
+  {{ _host_provision_inventory_lvm + _host_provision_lvm_remaining_defaults }}
+
+# Size validation inputs
+host_provision_disk_size_gb: >-
+  {{ hostvars[inventory_hostname].provision.hardware.disks[0].size_gb }}
+host_provision_lvm_total_gb: >-
+  {{ host_provision_lvm_mounts | map(attribute='size_gb') | map('int') | sum }}
+host_provision_lvm_available_gb: >-
+  {{ host_provision_disk_size_gb | int - host_provision_reserved_disk_gb | int }}

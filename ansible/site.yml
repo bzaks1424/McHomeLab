@@ -44,7 +44,7 @@
         name: registry
         tasks_from: export
 
-- name: "Build"
+- name: "Validate"
   hosts: "{{ hostvars['localhost'].build_hosts }}"
   serial: 1
   gather_facts: false
@@ -59,8 +59,7 @@
         ansible_connection: local
         site_role_action: validate
 
-    # --- Gather facts (SSH to host) ---
-    - name: "Gather host facts"
+    - name: "The crowd goes wild! Now, get the facts."
       ansible.builtin.setup:
 
     # --- Import from registry ---

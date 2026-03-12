@@ -14,6 +14,9 @@ services:
   {{ svc_name }}:
     image: {{ svc.image }}
     restart: {{ svc.restart | default('unless-stopped') }}
+{% if svc.init | default(false) %}
+    init: true
+{% endif %}
 {% if svc.command is defined %}
     command: {{ svc.command }}
 {% endif %}
@@ -51,6 +54,9 @@ services:
       interval: {{ svc.healthcheck.interval }}
       timeout: {{ svc.healthcheck.timeout }}
       retries: {{ svc.healthcheck.retries }}
+{% if svc.healthcheck.start_period is defined %}
+      start_period: {{ svc.healthcheck.start_period }}
+{% endif %}
 {% endif %}
 {% if svc.traefik is defined and svc.traefik != false and svc.network_mode is not defined %}
     labels:

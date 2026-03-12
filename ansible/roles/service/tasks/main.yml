@@ -25,11 +25,11 @@
         | list)
        + _infra_volume_paths)
       | unique
-      | reject('in', _nfs_mount_paths)
+      | reject('in', _os_mount_paths)
       | list
     }}
   vars:
-    _nfs_mount_paths: >-
+    _os_mount_paths: >-
       {{ (hostvars[inventory_hostname].provision.mounts | default([]))
          | map(attribute='path') | list }}
     _infra_volume_paths: >-

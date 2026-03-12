@@ -42,7 +42,7 @@
       become: false
       when: _host_exports | selectattr('type', 'eq', 'file') | list | length > 0
 
-    - name: "Fetch file '{{ item.name }}' from {{ inventory_hostname }}"
+    - name: "Fetch file from {{ inventory_hostname }}"
       ansible.builtin.fetch:
         src: "{{ item.src }}"
         dest: "{{ export_root }}/{{ inventory_hostname }}/{{ item.name }}"
@@ -52,7 +52,7 @@
         label: "{{ item.name }} ({{ item.src }})"
 
     # --- Push file exports to dest if specified ---
-    - name: "Push '{{ item.name }}' to {{ item.dest }}:{{ item.dest_path | default(item.src) }}"
+    - name: "Push Item to its destination"
       ansible.builtin.shell: >
         rsync -az --rsync-path="mkdir -p $(dirname '{{ item.dest_path | default(item.src) }}') && rsync"
         "{{ export_root }}/{{ inventory_hostname }}/{{ item.name }}"

@@ -6,7 +6,7 @@
 ###############################################################################################################################################################
 ######
 - name: "Check for VM Existence {{ inventory_hostname }}"
-  delegate_to: localhost
+  delegate_to: localhost # So this is required to avoid a weird python interpreter mismatch. I'm not sure why. but its really necessary.
   register: host_vm_info
   vmware.vmware.guest_info:
     hostname: "{{ vmware_vcenter_hostname }}"
@@ -27,7 +27,7 @@
       vars:
         role_action: "provision"
 - name: "Validating Host is PoweredOn {{ inventory_hostname }}"
-  delegate_to: localhost
+  delegate_to: localhost # So this is required to avoid a weird python interpreter mismatch. I'm not sure why. but its really necessary.
   community.vmware.vmware_guest:
     hostname: "{{ vmware_vcenter_hostname }}"
     username: "{{ vmware_vcenter_username }}"
@@ -39,13 +39,14 @@
   ansible.builtin.wait_for:
     port: "{{ host_validate_port }}"
     host: "{{ host_fqdn }}"
+    search_regex: "OpenSSH"
     delay: 2 # 2 second queries
-    timeout: 300 # 5 minutes wait
-- name: "Fetch and add the remote host key to the known_hosts file {{ host_ssh_known_hosts_path }}"
+    timeout: 300 #5 minutes wait
+- name: "The Handshake: Adding to known_hosts {{ host_fqdn }}"
+  become: true
+  become_user: "{{ ansible_user }}"
   ansible.builtin.known_hosts:
-    name: "{{ host_fqdn }}"
-    key: "{{ lookup('ansible.builtin.pipe', 'ssh-keyscan -p 22 -H ' + host_fqdn) }}"
+    name: "{{ host_fqdn}}"
+    key: "{{ lookup('pipe', 'ssh-keyscan -t ed25519 ' + host_fqdn) }}"
     state: present
-    path: "{{ host_ssh_known_hosts_path }}"
-  run_once: true # CRUCIAL: Run this only once per unique host to avoid unnecessary operations.
 ###############################################################################################################################################################

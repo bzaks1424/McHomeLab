@@ -1,12 +1,11 @@
 ---
 - name: "Check if UniFi OS Server is installed"
-  ansible.builtin.command: "systemctl is-active {{ _unifi_os_service_name }}"
-  register: _unifi_os_status
-  changed_when: false
-  failed_when: false
+  ansible.builtin.service_facts:
+  register: _unifi_os_facts
 
 - name: "Install UniFi OS Server"
-  when: _unifi_os_status.rc != 0
+  when: (_unifi_os_service_name + '.service') not in ansible_facts.services or
+    ansible_facts.services[_unifi_os_service_name + '.service'].state != 'running'
   block:
     - name: "Create installer directory"
       ansible.builtin.file:
@@ -20,13 +19,12 @@
         dest: "{{ _unifi_os_installer_path }}"
         mode: "0755"
 
-    - name: "Run UniFi OS Server installer"
-      ansible.builtin.command: "{{ _unifi_os_installer_path }}"
-      changed_when: true
-
-- name: "Ensure UniFi OS Server is enabled and running"
-  ansible.builtin.systemd:
-    name: "{{ _unifi_os_service_name }}"
-    state: started
-    enabled: true
+    # - name: "Run UniFi OS Server installer"
+    #   ansible.builtin.command: "{{ _unifi_os_installer_path }}"
+    #   changed_when: true
+# - name: "Ensure UniFi OS Server is enabled and running"
+#   ansible.builtin.systemd:
+#     name: "{{ _unifi_os_service_name }}"
+#     state: started
+#     enabled: true
 ###############################################################################################################################################################

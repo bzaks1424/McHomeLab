@@ -1,0 +1,14 @@
+---
+_uisp_config: "{{ hostvars[inventory_hostname].software.uisp | default({}) }}"
+_uisp_installer_url: "https://uisp.ui.com/install"
+_uisp_installer_path: "/opt/uisp/install.sh"
+_uisp_cli_path: "/home/unms/app/unms-cli"
+
+# Build installer arguments from inventory config
+_uisp_installer_args: >-
+  {{ ['--unattended'] if (_uisp_config.unattended | default(true)) else [] }}
+  {{ + ['--https-port', _uisp_config.https_port | string] if _uisp_config.https_port is defined else [] }}
+  {{ + ['--http-port', _uisp_config.http_port | string] if _uisp_config.http_port is defined else [] }}
+  {{ + ['--public-https-port', _uisp_config.public_https_port | string] if _uisp_config.public_https_port is defined else [] }}
+  {{ + ['--ws-port', _uisp_config.ws_port | string] if _uisp_config.ws_port is defined else [] }}
+  {{ + ['--subnet', _uisp_config.subnet] if _uisp_config.subnet is defined else [] }}

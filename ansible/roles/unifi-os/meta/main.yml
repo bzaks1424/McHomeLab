@@ -1,0 +1,13 @@
+galaxy_info:
+  author: bzaks1424
+  description: >
+    Installs UniFi OS Server. Uses podman internally.
+    Binary installer downloaded from URL specified in inventory.
+  company: McHomeLab
+  license: BSD-3-Clause
+  min_ansible_version: "2.1"
+  galaxy_tags: []
+
+dependencies:
+  - podman
+  - slirp4netns

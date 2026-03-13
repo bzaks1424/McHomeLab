@@ -1,0 +1,5 @@
+---
+_unifi_os_config: "{{ hostvars[inventory_hostname].software['unifi-os'] | default({}) }}"
+_unifi_os_version_url: "{{ _unifi_os_config.version_url }}"
+_unifi_os_installer_path: "/opt/unifi-os/installer"
+_unifi_os_service_name: "unifi-os"

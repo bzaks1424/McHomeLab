@@ -42,6 +42,15 @@
     dest: "{{ service_dir }}/docker-compose.yml"
     mode: "{{ service_file_mode }}"
 
+- name: "Template traefik external routes config"
+  when:
+    - "'traefik' in service_infra_services"
+    - "service_infra_services.traefik.config.external_routes is defined"
+  ansible.builtin.template:
+    src: traefik-external.yml.j2
+    dest: "{{ service_dir }}/traefik-external.yml"
+    mode: "{{ service_file_mode }}"
+
 - name: "Deploy compose stack"
   community.docker.docker_compose_v2:
     project_src: "{{ service_dir }}"

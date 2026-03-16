@@ -1,0 +1,26 @@
+---
+- name: "Check if UISP is installed"
+  ansible.builtin.stat:
+    path: "{{ _uisp_cli_path }}"
+  register: _uisp_installed
+
+- name: "Install UISP"
+  when: not _uisp_installed.stat.exists
+  block:
+    - name: "Create installer directory"
+      ansible.builtin.file:
+        path: "{{ _uisp_installer_path | dirname }}"
+        state: directory
+        mode: "0755"
+
+    - name: "Download UISP installer"
+      ansible.builtin.get_url:
+        url: "{{ _uisp_installer_url }}"
+        dest: "{{ _uisp_installer_path }}"
+        mode: "0755"
+
+    # - name: "Run UISP installer"
+    #   ansible.builtin.command:
+    #     argv: "{{ ['/bin/bash', _uisp_installer_path] + _uisp_installer_args }}"
+    #   changed_when: true
+###############################################################################################################################################################

@@ -1,0 +1,11 @@
+galaxy_info:
+  author: bzaks1424
+  description: >
+    Installs UISP via official installer script.
+    Installer manages its own Docker dependency.
+  company: McHomeLab
+  license: BSD-3-Clause
+  min_ansible_version: "2.1"
+  galaxy_tags: []
+
+dependencies: []

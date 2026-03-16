@@ -14,6 +14,9 @@
       - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+{% if config.external_routes is defined %}
+      - "--providers.file.directory=/etc/traefik/dynamic"
+{% endif %}
 {% for ep_name, ep_port in config.entrypoints.items() %}
       - "--entrypoints.{{ ep_name }}.address=:{{ ep_port }}"
 {% endfor %}
@@ -27,16 +30,23 @@
 {% for ep_name, ep_port in config.entrypoints.items() %}
       - "{{ ep_port }}:{{ ep_port }}"
 {% endfor %}
-      - "8080:8080"
+      - "9880:8080"
 {% if ca_cert_host_path is defined %}
     environment:
       LEGO_CA_CERTIFICATES: "/etc/ssl/certs/step-ca-root.crt"
+{% endif %}
+{% if config.external_routes is defined %}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 {% endif %}
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "{{ config.certs_volume }}:/letsencrypt"
 {% if ca_cert_host_path is defined %}
       - "{{ ca_cert_host_path }}:/etc/ssl/certs/step-ca-root.crt:ro"
+{% endif %}
+{% if config.external_routes is defined %}
+      - "{{ service_dir }}/traefik-external.yml:/etc/traefik/dynamic/external.yml:ro"
 {% endif %}
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--ping"]

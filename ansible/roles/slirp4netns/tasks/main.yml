@@ -1,0 +1,8 @@
+---
+# tasks file for {{ role_name }}
+- name: "Install package: {{ role_name }}"
+  ansible.builtin.apt:
+    name: "{{ role_name }}"
+    state: present
+    update_cache: true
+###############################################################################################################################################################

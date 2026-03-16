@@ -9,7 +9,7 @@ tcp:
     {{ route.name }}:
       rule: "HostSNI(`{{ route.rule | regex_replace('.*Host\\(`([^`]+)`\\).*', '\\1') }}`)"
       entryPoints:
-        - "websecure"
+        - "{{ route.entrypoint | default('websecure') }}"
       service: "{{ route.name }}"
       tls:
         passthrough: true
@@ -29,10 +29,12 @@ http:
     {{ route.name }}:
       rule: "{{ route.rule }}"
       entryPoints:
-        - "websecure"
+        - "{{ route.entrypoint | default('websecure') }}"
       service: "{{ route.name }}"
+{% if route.entrypoint | default('websecure') != 'web' %}
       tls:
         certResolver: "step-ca"
+{% endif %}
 {% endfor %}
   services:
 {% for route in proxy_routes %}

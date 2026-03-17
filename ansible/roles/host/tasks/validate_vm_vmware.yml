@@ -3,8 +3,6 @@
 # Don't do it.
 # You need the ISO/PXE config BEFORE the VM
 # So just let this be procedural. Just fucking let it be.
-###############################################################################################################################################################
-######
 - name: "Check for VM Existence {{ inventory_hostname }}"
   delegate_to: localhost # So this is required to avoid a weird python interpreter mismatch. I'm not sure why. but its really necessary.
   register: host_vm_info
@@ -49,4 +47,3 @@
     name: "{{ host_fqdn}}"
     key: "{{ lookup('pipe', 'ssh-keyscan -t ed25519 ' + host_fqdn) }}"
     state: present
-###############################################################################################################################################################

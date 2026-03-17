@@ -8,10 +8,6 @@
 #   - type: 'file' or 'var'
 #   - src:  (file only) path on the remote host to fetch
 #   - value: (var only) the value to store
-#   - dest: (optional) hostname to push file to after storing on controller.
-#           If dest is set and unreachable, the task will fail.
-#           Default: controller only (no push).
-#   - dest_path: (optional) path on dest host. Defaults to src path.
 #
 # File exports are fetched to {{ export_root }}/{{ inventory_hostname }}/{{ name }}
 # Var exports are recorded directly in registry.json
@@ -28,6 +24,7 @@
 - name: "Gather exports for {{ inventory_hostname }}"
   ansible.builtin.set_fact:
     _host_exports: "{{ _host_exports_override | default(hostvars[inventory_hostname]['export'] | default([])) }}"
+    _export_entries: {}
 
 - name: "Process exports for {{ inventory_hostname }}"
   when: _host_exports | length > 0
@@ -50,22 +47,6 @@
       loop: "{{ _host_exports | selectattr('type', 'eq', 'file') | list }}"
       loop_control:
         label: "{{ item.name }} ({{ item.src }})"
-
-    # --- Push file exports to dest if specified ---
-    - name: "Push Item to its destination"
-      ansible.builtin.shell: >
-        rsync -az --rsync-path="mkdir -p $(dirname '{{ item.dest_path | default(item.src) }}') && rsync"
-        "{{ export_root }}/{{ inventory_hostname }}/{{ item.name }}"
-        "{{ ansible_user }}@{{ item.dest }}:{{ item.dest_path | default(item.src) }}"
-      delegate_to: localhost
-      become: false
-      loop: >-
-        {{ _host_exports
-           | selectattr('type', 'eq', 'file')
-           | selectattr('dest', 'defined')
-           | list }}
-      loop_control:
-        label: "{{ item.name }} → {{ item.dest }}"
 
     # --- Build combined registry entries for all exports ---
     - name: "Build export entries"

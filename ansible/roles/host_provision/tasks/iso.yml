@@ -84,4 +84,3 @@
         state: present
         type: "iso"
         iso_path: "{{ hostvars[inventory_hostname].provision.manager_infra.iso_mount_dir }}/{{ _iso_custom_name }}"
-###############################################################################################################################################################

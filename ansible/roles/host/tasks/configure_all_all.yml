@@ -32,4 +32,3 @@
     name: "{{ item.key }}"
   loop: "{{ hostvars[inventory_hostname].software | default({}) | dict2items }}"
   when: hostvars[inventory_hostname].software is defined
-###############################################################################################################################################################

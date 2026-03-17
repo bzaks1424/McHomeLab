@@ -4,4 +4,3 @@ docker_ubuntu_url: "https://download.docker.com/linux/ubuntu"
 docker_ubuntu_asc_url: "{{ docker_ubuntu_url }}/gpg"
 docker_keyring_asc: "{{ docker_keyring_path_default }}/docker.asc"
 docker_ubuntu_repo: "deb [arch=amd64 signed-by={{ docker_keyring_asc }}] {{ docker_ubuntu_url }} {{ ansible_distribution_release }} stable"
-###############################################################################################################################################################

@@ -1,0 +1,13 @@
+---
+galaxy_info:
+  author: bzaks1424
+  description: >
+    Persistent JSON registry for cross-host file and variable exchange.
+    Provides init, import, export, and save task files.
+    No tasks/main.yml — included explicitly via tasks_from in site.yml.
+  company: McHomeLab
+  license: BSD-3-Clause
+  min_ansible_version: "2.1"
+  galaxy_tags: []
+
+dependencies: []

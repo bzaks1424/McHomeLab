@@ -19,4 +19,3 @@ host_provision_iso_checksum: "sha256:{{ host_provision_iso_base_url }}/SHA256SUM
 host_provision_pxe_kernel_tag: "24.04.4-717d3a1a"
 host_provision_pxe_kernel_url: "https://github.com/netbootxyz/ubuntu-squash/releases/download/{{ host_provision_pxe_kernel_tag }}/"
 host_provision_pxe_iso_url: "http://releases.ubuntu.com/noble/{{ host_provision_iso_file_name }}"
-###############################################################################################################################################################

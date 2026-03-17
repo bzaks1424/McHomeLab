@@ -9,4 +9,3 @@ apt_proxy_host: "{{ ext_apt_proxy_host | default(apt_proxy_host_default) }}"
 apt_proxy_port: "{{ ext_apt_proxy_port | default(apt_proxy_port_default) }}"
 apt_proxy_check_timeout: 10
 apt_proxy_check_delay: 1
-###############################################################################################################################################################

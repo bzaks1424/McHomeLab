@@ -2,12 +2,6 @@
 # https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/apt_key_module.html
 # https://docs.docker.com/engine/install/ubuntu/
 # https://docs.docker.com/engine/install/linux-postinstall
-# - name: "Install package: {{ role_name }}"
-#   ansible.builtin.apt:
-#     name: "{{ role_name }}"
-#     state: present
-#     update_cache: true
-###############################################################################################################################################################
 - name: "Validate Keyring Directory Exists and is correct mode"
   ansible.builtin.file:
     path: "{{ docker_keyring_path_default }}"
@@ -43,4 +37,3 @@
 - name: "Refresh the SSH session to apply new group membership"
   ansible.builtin.meta: refresh_inventory
   # ansible.builtin.meta: reset_connection
-###############################################################################################################################################################

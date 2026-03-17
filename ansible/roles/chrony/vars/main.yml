@@ -9,4 +9,3 @@ chrony_service_name: "{{ role_name }}d"
 chrony_ntp_server: "{{ ext_ntp_server | default(chrony_ntp_server_default) }}"
 chrony_proxy_check_timeout: 10
 chrony_proxy_check_delay: 1
-###############################################################################################################################################################

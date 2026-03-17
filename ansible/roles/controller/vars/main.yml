@@ -2,4 +2,3 @@
 # vars file for controller
 controller_nfs_mounts: "{{ hostvars[inventory_hostname].provision.mounts | default([]) | selectattr('type', 'eq', 'nfs') | list }}"
 controller_iso_root: "{{ hostvars[inventory_hostname].provision.vars.iso_root }}"
-###############################################################################################################################################################

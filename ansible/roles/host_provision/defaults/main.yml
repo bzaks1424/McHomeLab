@@ -1,7 +1,7 @@
 ---
 # defaults file for host_provision
-host_provision_mode_default: '0644'
-host_provision_template_mode_default: '0755'
+host_provision_mode_default: "0644"
+host_provision_template_mode_default: "0755"
 
 # Default LVM mounts — always present unless overridden by path in provision.mounts
 host_provision_lvm_defaults:

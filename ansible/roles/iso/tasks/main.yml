@@ -6,7 +6,6 @@
     mode: "{{ iso_mode }}"
     checksum: "{{ iso_checksum }}"
     timeout: 300
-###############################################################################################################################################################
 - name: "Create Local Temp ISO Landing"
   ansible.builtin.tempfile:
     state: directory
@@ -30,4 +29,3 @@
     cmd: mv '{{ iso_tmp_iso_dir }}/[BOOT]' '{{ iso_tmp_dir.path }}/BOOT'
   register: iso_mv_cmd_results
   changed_when: iso_mv_cmd_results.rc == 0
-###############################################################################################################################################################

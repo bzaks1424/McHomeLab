@@ -6,7 +6,7 @@
 {%   set ca_cert_host_path = config.ca_cert_path %}
 {% endif %}
   traefik:
-    image: traefik:latest
+    image: {{ traefik_image }}
     restart: {{ traefik.restart | default('unless-stopped') }}
     command:
       - "--api.insecure=true"
@@ -18,27 +18,27 @@
 {% for ep_name, ep_port in config.entrypoints.items() %}
       - "--entrypoints.{{ ep_name }}.address=:{{ ep_port }}"
 {% endfor %}
-      - "--certificatesresolvers.step-ca.acme.caserver={{ config.acme_ca }}"
-      - "--certificatesresolvers.step-ca.acme.email={{ config.acme_email }}"
-      - "--certificatesresolvers.step-ca.acme.storage=/letsencrypt/acme.json"
-      - "--certificatesresolvers.step-ca.acme.tlschallenge=true"
+      - "--certificatesresolvers.{{ traefik_cert_resolver }}.acme.caserver={{ config.acme_ca }}"
+      - "--certificatesresolvers.{{ traefik_cert_resolver }}.acme.email={{ config.acme_email }}"
+      - "--certificatesresolvers.{{ traefik_cert_resolver }}.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.{{ traefik_cert_resolver }}.acme.tlschallenge=true"
       - "--serversTransport.insecureSkipVerify=true"
       - "--ping=true"
     ports:
 {% for ep_name, ep_port in config.entrypoints.items() %}
       - "{{ ep_port }}:{{ ep_port }}"
 {% endfor %}
-      - "9880:8080"
+      - "{{ traefik_admin_port }}:8080"
 {% if ca_cert_host_path is defined %}
     environment:
       LEGO_CA_CERTIFICATES: "{{ service_ca_cert_container_path }}"
 {% endif %}
 {% if config.external_routes is defined %}
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "{{ service_docker_host_gateway }}"
 {% endif %}
     volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "{{ service_docker_socket }}:{{ service_docker_socket }}:ro"
       - "{{ config.certs_volume }}:/letsencrypt"
 {% if ca_cert_host_path is defined %}
       - "{{ ca_cert_host_path }}:{{ service_ca_cert_container_path }}:ro"

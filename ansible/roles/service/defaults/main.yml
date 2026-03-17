@@ -2,3 +2,5 @@
 service_dir: "/opt/docker/compose"
 service_file_mode: "0644"
 service_dir_mode: "0755"
+service_docker_socket: "/var/run/docker.sock"
+service_docker_host_gateway: "host.docker.internal:host-gateway"

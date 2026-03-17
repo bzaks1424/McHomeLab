@@ -30,7 +30,7 @@
 {% endif %}
       - "traefik.http.routers.{{ tun_name }}.entrypoints=websecure"
       - "traefik.http.routers.{{ tun_name }}.tls=true"
-      - "traefik.http.routers.{{ tun_name }}.tls.certresolver=step-ca"
+      - "traefik.http.routers.{{ tun_name }}.tls.certresolver={{ traefik_cert_resolver }}"
       - "traefik.http.services.{{ tun_name }}.loadbalancer.server.port={{ tun_svc.traefik.port }}"
 {% endif %}
 {% endfor %}

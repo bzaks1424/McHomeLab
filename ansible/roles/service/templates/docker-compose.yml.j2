@@ -69,7 +69,7 @@ services:
       - "traefik.http.services.{{ svc_name }}-{{ loop.index0 }}.loadbalancer.server.port={{ route.port }}"
 {% if route.tls | default(false) %}
       - "traefik.http.routers.{{ svc_name }}-{{ loop.index0 }}.tls=true"
-      - "traefik.http.routers.{{ svc_name }}-{{ loop.index0 }}.tls.certresolver=step-ca"
+      - "traefik.http.routers.{{ svc_name }}-{{ loop.index0 }}.tls.certresolver={{ traefik_cert_resolver }}"
 {% endif %}
 {% endfor %}
 {% elif svc.dns_name is defined %}
@@ -77,7 +77,7 @@ services:
       - "traefik.http.routers.{{ svc_name }}.rule=Host(`{{ fqdn }}`)"
       - "traefik.http.routers.{{ svc_name }}.entrypoints=websecure"
       - "traefik.http.routers.{{ svc_name }}.tls=true"
-      - "traefik.http.routers.{{ svc_name }}.tls.certresolver=step-ca"
+      - "traefik.http.routers.{{ svc_name }}.tls.certresolver={{ traefik_cert_resolver }}"
       - "traefik.http.services.{{ svc_name }}.loadbalancer.server.port={{ svc.traefik.port }}"
 {% if svc.traefik.scheme is defined %}
       - "traefik.http.services.{{ svc_name }}.loadbalancer.server.scheme={{ svc.traefik.scheme }}"
@@ -86,7 +86,7 @@ services:
       - "traefik.http.routers.{{ svc_name }}.rule={{ svc.traefik.rule }}"
       - "traefik.http.routers.{{ svc_name }}.entrypoints=websecure"
       - "traefik.http.routers.{{ svc_name }}.tls=true"
-      - "traefik.http.routers.{{ svc_name }}.tls.certresolver=step-ca"
+      - "traefik.http.routers.{{ svc_name }}.tls.certresolver={{ traefik_cert_resolver }}"
       - "traefik.http.services.{{ svc_name }}.loadbalancer.server.port={{ svc.traefik.port }}"
 {% endif %}
 {% else %}

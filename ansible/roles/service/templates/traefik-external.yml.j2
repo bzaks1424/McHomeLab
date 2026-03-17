@@ -33,7 +33,7 @@ http:
       service: "{{ route.name }}"
 {% if route.entrypoint | default('websecure') != 'web' %}
       tls:
-        certResolver: "step-ca"
+        certResolver: "{{ traefik_cert_resolver }}"
 {% endif %}
 {% endfor %}
   services:

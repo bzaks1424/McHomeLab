@@ -31,6 +31,7 @@ galaxy_info:
 
 dependencies:
   - apt
+  - ca-certificates
   - chrony
   - nfs-common
   - p7zip

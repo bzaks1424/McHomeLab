@@ -1,0 +1,18 @@
+---
+- name: "Install package: {{ role_name }}"
+  ansible.builtin.apt:
+    name: "{{ role_name }}"
+    state: present
+    update_cache: true
+- name: "Check for CA certificate"
+  ansible.builtin.stat:
+    path: "{{ ca_cert_import_dest }}"
+  register: _ca_cert_file
+  when: ca_cert_import_dest | length > 0
+- name: "Update CA certificate trust store"
+  ansible.builtin.command:
+    cmd: /usr/sbin/update-ca-certificates
+    creates: "{{ ca_cert_trust_symlink }}"
+  when:
+    - _ca_cert_file is defined
+    - _ca_cert_file.stat.exists | default(false)

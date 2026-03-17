@@ -33,6 +33,7 @@ galaxy_info:
 
 dependencies:
   - apt
+  - ca-certificates
   - chrony
   - vim-tiny
   # List your role dependencies here, one per line. Be sure to remove the '[]' above,

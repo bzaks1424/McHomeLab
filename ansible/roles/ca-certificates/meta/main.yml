@@ -1,0 +1,12 @@
+galaxy_info:
+  author: bzaks1424
+  description: >
+    Validates the existence of the application {{ role_name }}.
+    If it doesn't exist - create it. Through whatever method necessary.
+  company: McHomeLab
+  license: BSD-3-Clause
+  min_ansible_version: "2.1"
+  galaxy_tags: []
+
+dependencies:
+  - apt

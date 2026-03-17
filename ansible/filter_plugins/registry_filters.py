@@ -51,7 +51,10 @@ class FilterModule:
         """
         if not isinstance(hostvars_entry, dict):
             return default
-        entries = hostvars_entry.get(section, [])
+        try:
+            entries = hostvars_entry[section]
+        except (KeyError, TypeError):
+            return default
         if not isinstance(entries, list):
             return default
         for entry in entries:

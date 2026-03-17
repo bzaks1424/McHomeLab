@@ -2,7 +2,7 @@
 {% set gluetun = service_infra_services.gluetun %}
 {% set config = gluetun.config %}
   gluetun:
-    image: qmcgaw/gluetun:v3
+    image: {{ gluetun_image }}
     restart: {{ gluetun.restart | default('unless-stopped') }}
     cap_add:
       - NET_ADMIN

@@ -1,11 +1,9 @@
 {# Traefik infrastructure service template #}
 {% set traefik = service_infra_services.traefik %}
 {% set config = traefik.config %}
-{# Resolve CA cert host path: explicit config wins, else derive from co-located step-ca #}
+{# Resolve CA cert host path from explicit config or import entry #}
 {% if config.ca_cert_path is defined %}
 {%   set ca_cert_host_path = config.ca_cert_path %}
-{% elif 'step-ca' in service_services %}
-{%   set ca_cert_host_path = service_services['step-ca'].volumes[0].split(':')[0] ~ '/certs/root_ca.crt' %}
 {% endif %}
   traefik:
     image: traefik:latest
@@ -33,7 +31,7 @@
       - "9880:8080"
 {% if ca_cert_host_path is defined %}
     environment:
-      LEGO_CA_CERTIFICATES: "/etc/ssl/certs/step-ca-root.crt"
+      LEGO_CA_CERTIFICATES: "{{ service_ca_cert_container_path }}"
 {% endif %}
 {% if config.external_routes is defined %}
     extra_hosts:
@@ -43,7 +41,7 @@
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "{{ config.certs_volume }}:/letsencrypt"
 {% if ca_cert_host_path is defined %}
-      - "{{ ca_cert_host_path }}:/etc/ssl/certs/step-ca-root.crt:ro"
+      - "{{ ca_cert_host_path }}:{{ service_ca_cert_container_path }}:ro"
 {% endif %}
 {% if config.external_routes is defined %}
       - "{{ service_dir }}/traefik-external.yml:/etc/traefik/dynamic/external.yml:ro"

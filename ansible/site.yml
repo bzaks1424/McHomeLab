@@ -36,10 +36,20 @@
   connection: local
   run_once: true
   become: true
-  roles:
-    - controller
-  post_tasks:
-    - name: "Export controller values to registry"
+  tasks:
+    # --- Import from registry ---
+    - name: "Import to controller"
+      ansible.builtin.include_role:
+        name: registry
+        tasks_from: import
+
+    # --- Configure controller ---
+    - name: "Configure controller"
+      ansible.builtin.include_role:
+        name: controller
+
+    # --- Export to registry ---
+    - name: "Export from controller"
       ansible.builtin.include_role:
         name: registry
         tasks_from: export

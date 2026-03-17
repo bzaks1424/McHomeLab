@@ -22,6 +22,7 @@ tcp:
           - address: "{{ route.url | regex_replace('^https?://', '') }}"
 {% endfor %}
 {% endif %}
+{% set redirect_routes = proxy_routes | selectattr('https_redirect', 'defined') | selectattr('https_redirect') | list %}
 {% if proxy_routes | length > 0 %}
 http:
   routers:
@@ -36,6 +37,23 @@ http:
         certResolver: "{{ traefik_cert_resolver }}"
 {% endif %}
 {% endfor %}
+{% for route in redirect_routes %}
+    {{ route.name }}-http:
+      rule: "{{ route.rule }}"
+      entryPoints:
+        - "web"
+      middlewares:
+        - "{{ route.name }}-redirect"
+      service: "{{ route.name }}"
+{% endfor %}
+{% if redirect_routes | length > 0 %}
+  middlewares:
+{% for route in redirect_routes %}
+    {{ route.name }}-redirect:
+      redirectScheme:
+        scheme: "https"
+{% endfor %}
+{% endif %}
   services:
 {% for route in proxy_routes %}
     {{ route.name }}:

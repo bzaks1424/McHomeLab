@@ -82,12 +82,24 @@ services:
 {% if svc.traefik.scheme is defined %}
       - "traefik.http.services.{{ svc_name }}.loadbalancer.server.scheme={{ svc.traefik.scheme }}"
 {% endif %}
+{% if svc.traefik.https_redirect | default(false) %}
+      - "traefik.http.routers.{{ svc_name }}-http.rule=Host(`{{ fqdn }}`)"
+      - "traefik.http.routers.{{ svc_name }}-http.entrypoints=web"
+      - "traefik.http.routers.{{ svc_name }}-http.middlewares={{ svc_name }}-redirect"
+      - "traefik.http.middlewares.{{ svc_name }}-redirect.redirectscheme.scheme=https"
+{% endif %}
 {% elif svc.traefik.rule is defined %}
       - "traefik.http.routers.{{ svc_name }}.rule={{ svc.traefik.rule }}"
       - "traefik.http.routers.{{ svc_name }}.entrypoints=websecure"
       - "traefik.http.routers.{{ svc_name }}.tls=true"
       - "traefik.http.routers.{{ svc_name }}.tls.certresolver={{ traefik_cert_resolver }}"
       - "traefik.http.services.{{ svc_name }}.loadbalancer.server.port={{ svc.traefik.port }}"
+{% if svc.traefik.https_redirect | default(false) %}
+      - "traefik.http.routers.{{ svc_name }}-http.rule={{ svc.traefik.rule }}"
+      - "traefik.http.routers.{{ svc_name }}-http.entrypoints=web"
+      - "traefik.http.routers.{{ svc_name }}-http.middlewares={{ svc_name }}-redirect"
+      - "traefik.http.middlewares.{{ svc_name }}-redirect.redirectscheme.scheme=https"
+{% endif %}
 {% endif %}
 {% else %}
     labels:

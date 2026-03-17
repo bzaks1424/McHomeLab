@@ -1,9 +1,3 @@
 ---
-ca_cert_import_dest: >-
-  {{ hostvars[inventory_hostname]['import']
-     | default([])
-     | selectattr('name', 'eq', 'root_ca_cert')
-     | map(attribute='dest')
-     | first
-     | default('') }}
+ca_cert_import_dest: "{{ hostvars[inventory_hostname] | inventory_entry('import', 'root_ca_cert', 'dest', '') }}"
 ca_cert_trust_symlink: "/etc/ssl/certs/{{ ca_cert_import_dest | basename | splitext | first }}.pem"

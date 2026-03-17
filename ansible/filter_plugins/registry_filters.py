@@ -1,12 +1,13 @@
-"""Custom Jinja2 filters for registry lookups."""
+"""Custom Jinja2 filters for registry and inventory lookups."""
 
 
 class FilterModule:
-    """Registry filter plugins for safe value access."""
+    """Filter plugins for registry and inventory entry access."""
 
     def filters(self):
         return {
             'registry_get': self.registry_get,
+            'inventory_entry': self.inventory_entry,
         }
 
     @staticmethod
@@ -27,4 +28,33 @@ class FilterModule:
             return default
         if isinstance(entry, dict):
             return entry.get('value', default)
+        return default
+
+    @staticmethod
+    def inventory_entry(hostvars_entry, section, name, attribute, default=None):
+        """Look up an attribute from a named import or export entry in inventory.
+
+        Usage in templates/vars:
+            {{ hostvars[inventory_hostname] | inventory_entry('import', 'root_ca_cert', 'dest') }}
+            {{ hostvars[inventory_hostname] | inventory_entry('export', 'root_ca_cert', 'src') }}
+            {{ hostvars[inventory_hostname] | inventory_entry('import', 'my_key', 'dest', '/fallback') }}
+
+        Args:
+            hostvars_entry: The hostvars dict for a single host.
+            section: 'import' or 'export'.
+            name: The 'name' field to match on.
+            attribute: The attribute to extract from the matched entry.
+            default: Value to return if not found.
+
+        Returns the attribute value from the first matching entry,
+        or default if no match is found.
+        """
+        if not isinstance(hostvars_entry, dict):
+            return default
+        entries = hostvars_entry.get(section, [])
+        if not isinstance(entries, list):
+            return default
+        for entry in entries:
+            if isinstance(entry, dict) and entry.get('name') == name:
+                return entry.get(attribute, default)
         return default

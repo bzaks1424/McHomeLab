@@ -29,11 +29,4 @@ service_gluetun_tunneled: >-
      | items2dict }}
 
 # CA cert container path — derived from import entry basename
-service_ca_cert_container_path: >-
-  /etc/ssl/certs/{{ hostvars[inventory_hostname]['import']
-     | default([])
-     | selectattr('name', 'eq', 'root_ca_cert')
-     | map(attribute='dest')
-     | first
-     | default('')
-     | basename }}
+service_ca_cert_container_path: "/etc/ssl/certs/{{ hostvars[inventory_hostname] | inventory_entry('import', 'root_ca_cert', 'dest', '') | basename }}"

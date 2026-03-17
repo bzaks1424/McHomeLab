@@ -1,6 +1,11 @@
 ---
-# defaults file for  {{ role_name }}
 docker_keyring_path_default: /etc/apt/keyrings
 docker_keyring_dir_mode_default: '0755'
 docker_file_mode_default: '0644'
-###############################################################################################################################################################
+docker_group_name: docker
+docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin

@@ -4,3 +4,7 @@ service_file_mode: "0644"
 service_dir_mode: "0755"
 service_docker_socket: "/var/run/docker.sock"
 service_docker_host_gateway: "host.docker.internal:host-gateway"
+traefik_image: "traefik:v3.6"
+traefik_cert_resolver: "step-ca"
+traefik_admin_port: 9880
+gluetun_image: "qmcgaw/gluetun:v3"

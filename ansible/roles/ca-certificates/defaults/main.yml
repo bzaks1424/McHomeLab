@@ -1,3 +1,2 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# defaults file for ansible/roles/ca-certificates
+ca_cert_store_dir: /usr/local/share/ca-certificates

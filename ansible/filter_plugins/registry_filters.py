@@ -1,5 +1,7 @@
 """Custom Jinja2 filters for registry and inventory lookups."""
 
+from collections.abc import Mapping
+
 
 class FilterModule:
     """Filter plugins for registry and inventory entry access."""
@@ -31,13 +33,14 @@ class FilterModule:
         return default
 
     @staticmethod
-    def inventory_entry(hostvars_entry, section, name, attribute, default=None):
+    def inventory_entry(hostvars_entry, section, name, attribute, default=None, contains=None):
         """Look up an attribute from a named import or export entry in inventory.
 
         Usage in templates/vars:
             {{ hostvars[inventory_hostname] | inventory_entry('import', 'root_ca_cert', 'dest') }}
             {{ hostvars[inventory_hostname] | inventory_entry('export', 'root_ca_cert', 'src') }}
-            {{ hostvars[inventory_hostname] | inventory_entry('import', 'my_key', 'dest', '/fallback') }}
+            {{ hostvars[inventory_hostname] | inventory_entry('import', 'root_ca_cert', 'dest',
+                                                              contains='ca-certificates') }}
 
         Args:
             hostvars_entry: The hostvars dict for a single host.
@@ -45,11 +48,13 @@ class FilterModule:
             name: The 'name' field to match on.
             attribute: The attribute to extract from the matched entry.
             default: Value to return if not found.
+            contains: Optional substring filter — only match entries where
+                      the attribute value contains this string.
 
         Returns the attribute value from the first matching entry,
         or default if no match is found.
         """
-        if not isinstance(hostvars_entry, dict):
+        if not isinstance(hostvars_entry, Mapping):
             return default
         try:
             entries = hostvars_entry[section]
@@ -59,5 +64,10 @@ class FilterModule:
             return default
         for entry in entries:
             if isinstance(entry, dict) and entry.get('name') == name:
-                return entry.get(attribute, default)
+                value = entry.get(attribute, default)
+                if contains is not None:
+                    if isinstance(value, str) and contains in value:
+                        return value
+                    continue
+                return value
         return default

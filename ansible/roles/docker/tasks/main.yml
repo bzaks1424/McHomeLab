@@ -26,22 +26,17 @@
     state: present
 - name: "Install Default Docker Packages"
   ansible.builtin.apt:
-    name:
-      - docker-ce
-      - docker-ce-cli
-      - containerd.io
-      - docker-buildx-plugin
-      - docker-compose-plugin
+    name: "{{ docker_packages }}"
     state: present
-- name: "Does 'docker' group exist"
+- name: "Does '{{ docker_group_name }}' group exist"
   ansible.builtin.group:
-    name: docker
+    name: "{{ docker_group_name }}"
     state: present
   register: docker_group
-- name: "Add the current user to the 'docker' group"
+- name: "Add the current user to the '{{ docker_group_name }}' group"
   ansible.builtin.user:
     name: "{{ ansible_user }}"
-    groups: docker
+    groups: "{{ docker_group_name }}"
     append: true
     state: present
   register: docker_user

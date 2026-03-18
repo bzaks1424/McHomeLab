@@ -1,0 +1,9 @@
+---
+step_ca_cert_url: "{{ hostvars[inventory_hostname].cert.ca_url }}"
+step_ca_cert_provisioner_password: "{{ hostvars[inventory_hostname].cert.ca_provisioner_password }}"
+step_ca_cert_cn: "{{ hostvars[inventory_hostname].cert.cn }}"
+step_ca_cert_sans: "{{ hostvars[inventory_hostname].cert.sans | default([]) }}"
+step_ca_cert_dir: "{{ host_cert_dir }}"
+step_ca_cert_path: "{{ host_cert_path }}"
+step_ca_cert_key_path: "{{ host_cert_key_path }}"
+step_ca_cert_root_path: "{{ host_cert_root_path }}"

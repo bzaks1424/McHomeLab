@@ -1,0 +1,102 @@
+---
+# BTF: provision_appliance_synology.yml
+# Issues a Step-CA cert and uploads it to Synology DSM via REST API.
+#
+# The cert upload uses curl via ansible.builtin.command instead of
+# ansible.builtin.uri because Ansible's form-multipart body format
+# converts \n to \r\n in PEM content (Python email.policy.HTTP),
+# causing DSM to reject certs with upload_err: -5.
+#
+# For renewal, the import API is called with the existing cert's ID
+# so the cert is replaced in-place — service assignments and default
+# status are preserved, and nginx restarts automatically.
+
+- name: "Load appliance vars"
+  ansible.builtin.include_vars: "vars/appliance.yml"
+
+- name: "Issue certificate for {{ inventory_hostname }}"
+  ansible.builtin.include_role:
+    name: step-ca-cert
+
+- name: "Assemble CA chain (intermediate + root) for {{ inventory_hostname }}"
+  ansible.builtin.copy:
+    content: "{{ lookup('file', host_cert_intermediate_path) }}\n{{ lookup('file', host_cert_root_path) }}\n"
+    dest: "{{ host_cert_chain_path }}"
+    mode: "0644"
+
+- name: "Login to Synology DSM"
+  ansible.builtin.uri:
+    url: "{{ synology_base_url }}/webapi/entry.cgi?api=SYNO.API.Auth&version=7&method=login&format=sid&account={{ synology_user | urlencode }}&passwd={{ synology_password | urlencode }}&enable_syno_token=yes"
+    method: "GET"
+    validate_certs: false
+    return_content: true
+  register: _synology_login
+
+- name: "List existing certificates on {{ inventory_hostname }}"
+  ansible.builtin.uri:
+    url: "{{ synology_base_url }}/webapi/entry.cgi"
+    method: "POST"
+    validate_certs: false
+    return_content: true
+    headers:
+      X-SYNO-TOKEN: "{{ _synology_login.json.data.synotoken }}"
+    body_format: "form-urlencoded"
+    body:
+      api: "SYNO.Core.Certificate.CRT"
+      method: "list"
+      version: "1"
+      _sid: "{{ _synology_login.json.data.sid }}"
+  register: _synology_certs
+
+- name: "Find existing cert by description"
+  ansible.builtin.set_fact:
+    _synology_existing_cert_id: >-
+      {{ (_synology_certs.json.data.certificates
+          | selectattr('desc', 'equalto', synology_cert_desc)
+          | map(attribute='id')
+          | list
+          | first)
+         | default('') }}
+
+- name: "Import certificate to {{ inventory_hostname }}"
+  ansible.builtin.command:
+    argv:
+      - "curl"
+      - "-sk"
+      - "-X"
+      - "POST"
+      - "{{ synology_base_url }}/webapi/entry.cgi?api=SYNO.Core.Certificate&method=import&version=1&SynoToken={{ _synology_login.json.data.synotoken }}&_sid={{ _synology_login.json.data.sid }}"
+      - "-H"
+      - "X-SYNO-TOKEN: {{ _synology_login.json.data.synotoken }}"
+      - "-F"
+      - "key=@{{ host_cert_key_path }};type=application/octet-stream"
+      - "-F"
+      - "cert=@{{ host_cert_path }};type=application/octet-stream"
+      - "-F"
+      - "inter_cert=@{{ host_cert_chain_path }};type=application/octet-stream"
+      - "-F"
+      - "id={{ _synology_existing_cert_id }}"
+      - "-F"
+      - "desc={{ synology_cert_desc }}"
+      - "-F"
+      - "as_default=true"
+  register: _synology_import_raw
+  changed_when: true
+
+- name: "Verify certificate import succeeded"
+  ansible.builtin.assert:
+    that:
+      - (_synology_import_raw.stdout | from_json).success
+    fail_msg: "Certificate import to Synology failed: {{ _synology_import_raw.stdout }}"
+
+- name: "Wait for nginx restart on {{ inventory_hostname }}"
+  ansible.builtin.pause:
+    seconds: "{{ host_synology_nginx_restart_wait }}"
+  when: (_synology_import_raw.stdout | from_json).data.restart_httpd | default(false)
+
+- name: "Logout from Synology DSM"
+  ansible.builtin.uri:
+    url: "{{ synology_base_url }}/webapi/entry.cgi?api=SYNO.API.Auth&version=7&method=logout&_sid={{ _synology_login.json.data.sid }}"
+    method: "GET"
+    validate_certs: false
+  ignore_errors: true

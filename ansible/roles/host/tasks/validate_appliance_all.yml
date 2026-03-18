@@ -1,0 +1,5 @@
+---
+- name: "Provision cert for {{ inventory_hostname }}"
+  ansible.builtin.import_tasks: "tasks/best_task_file.yml"
+  vars:
+    role_action: "provision"

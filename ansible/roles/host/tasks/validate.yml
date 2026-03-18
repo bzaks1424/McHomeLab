@@ -1,14 +1,21 @@
 ---
-# tasks file for {{ role_name }}
-# TODO: is this right place for this check? I'd like to believe so.
 - name: "Running Host Role for {{ inventory_hostname }}"
   block:
-    - name: "Initial validation of {{ inventory_hostname }}"
+    - name: "Validate appliance cert trust for {{ inventory_hostname }}"
+      ansible.builtin.uri:
+        url: "https://{{ host_fqdn }}:{{ host_validate_port }}/"
+        validate_certs: true
+        method: "GET"
+      when: hostvars[inventory_hostname].provision.type == provision_type_appliance
+
+    - name: "Validate port reachability for {{ inventory_hostname }}"
       ansible.builtin.wait_for:
         port: "{{ host_validate_port }}"
         host: "{{ host_fqdn }}"
-        delay: 2 # 2 second queries
-        timeout: 10 # 5 minutes wait
+        delay: 2
+        timeout: 10
+      when: hostvars[inventory_hostname].provision.type != provision_type_appliance
+
   rescue:
     - name: "Initial Validation Failed; Performing full validation of {{ inventory_hostname }}"
       ansible.builtin.import_tasks: "tasks/best_task_file.yml"

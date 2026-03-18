@@ -1,0 +1,3 @@
+---
+- name: "No configuration needed for appliance {{ inventory_hostname }}"
+  ansible.builtin.meta: noop

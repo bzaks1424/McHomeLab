@@ -69,25 +69,28 @@
         ansible_connection: local
         site_role_action: validate
 
-    - name: "The crowd goes wild! Now, get the facts."
-      ansible.builtin.setup:
+    - name: "Host lifecycle: facts, import, configure, export"
+      when: hostvars[inventory_hostname].provision.type != provision_type_appliance
+      block:
+        - name: "The crowd goes wild! Now, get the facts."
+          ansible.builtin.setup:
 
-    # --- Import from registry ---
-    - name: "Import to {{ inventory_hostname }}"
-      ansible.builtin.include_role:
-        name: registry
-        tasks_from: import
+        # --- Import from registry ---
+        - name: "Import to {{ inventory_hostname }}"
+          ansible.builtin.include_role:
+            name: registry
+            tasks_from: import
 
-    # --- Configure via BTF ---
-    - name: "Configure {{ inventory_hostname }}"
-      ansible.builtin.include_role:
-        name: host
-        tasks_from: configure
-      vars:
-        site_role_action: configure
+        # --- Configure via BTF ---
+        - name: "Configure {{ inventory_hostname }}"
+          ansible.builtin.include_role:
+            name: host
+            tasks_from: configure
+          vars:
+            site_role_action: configure
 
-    # --- Export to registry ---
-    - name: "Export from {{ inventory_hostname }}"
-      ansible.builtin.include_role:
-        name: registry
-        tasks_from: export
+        # --- Export to registry ---
+        - name: "Export from {{ inventory_hostname }}"
+          ansible.builtin.include_role:
+            name: registry
+            tasks_from: export

@@ -1,3 +1,6 @@
 ---
 # defaults file for host
 host_folder_mode_default: "0755"
+host_synology_dsm_port: 5001
+host_synology_cert_desc: "Step-CA Managed"
+host_synology_nginx_restart_wait: 5

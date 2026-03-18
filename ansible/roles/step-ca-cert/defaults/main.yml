@@ -1,0 +1,6 @@
+---
+step_ca_cert_duration: "43800h"
+step_ca_cert_renewal_threshold: "168h"
+step_ca_cert_key_type: "RSA"
+step_ca_cert_key_size: 2048
+step_ca_cert_provisioner: "ansible"

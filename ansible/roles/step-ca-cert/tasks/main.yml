@@ -1,0 +1,42 @@
+---
+# Issue a certificate from Step-CA for the current host.
+# Checks renewal threshold first — only issues if cert is missing or expiring soon.
+# Sets step_ca_cert_path and step_ca_cert_key_path as facts for downstream tasks.
+
+- name: "Ensure cert directory exists for {{ inventory_hostname }}"
+  ansible.builtin.file:
+    path: "{{ step_ca_cert_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+
+- name: "Check if certificate needs renewal for {{ inventory_hostname }}"
+  ansible.builtin.command:
+    cmd: >-
+      step certificate needs-renewal
+      {{ step_ca_cert_path }}
+      --expires-in {{ step_ca_cert_renewal_threshold }}
+  register: _step_ca_renewal_check
+  failed_when: _step_ca_renewal_check.rc not in [0, 1]
+  changed_when: false
+  ignore_errors: true
+  delegate_to: localhost
+  become: false
+
+- name: "Issue certificate from Step-CA for {{ inventory_hostname }}"
+  ansible.builtin.command:
+    cmd: >-
+      step ca certificate {{ step_ca_cert_cn }}
+      {{ step_ca_cert_path }} {{ step_ca_cert_key_path }}
+      --provisioner {{ step_ca_cert_provisioner }}
+      --provisioner-password-file /dev/stdin
+      --ca-url {{ step_ca_cert_url }}
+      --kty {{ step_ca_cert_key_type }} --size {{ step_ca_cert_key_size }}
+      --not-after={{ step_ca_cert_duration }}
+      {% for san in step_ca_cert_sans %}--san {{ san }} {% endfor %}
+      --force
+    stdin: "{{ step_ca_cert_provisioner_password }}"
+  delegate_to: localhost
+  become: false
+  when: _step_ca_renewal_check is failed or _step_ca_renewal_check.rc == 0

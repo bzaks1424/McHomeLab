@@ -1,12 +1,21 @@
 ---
 - name: "Running Host Role for {{ inventory_hostname }}"
   block:
-    - name: "Validate appliance cert trust for {{ inventory_hostname }}"
-      ansible.builtin.uri:
-        url: "https://{{ host_fqdn }}:{{ host_validate_port }}/"
-        validate_certs: true
-        method: "GET"
+    - name: "Validate appliance cert for {{ inventory_hostname }}"
       when: hostvars[inventory_hostname].provision.type == provision_type_appliance
+      block:
+        - name: "Get served certificate from {{ inventory_hostname }}"
+          community.crypto.get_certificate:
+            host: "{{ host_fqdn }}"
+            port: "{{ host_validate_port }}"
+          register: _appliance_cert
+
+        - name: "Validate certificate issuer and expiry for {{ inventory_hostname }}"
+          ansible.builtin.assert:
+            that:
+              - "_appliance_cert.issuer.O is defined"
+              - "_appliance_cert.issuer.O == host_appliance_cert_issuer_org"
+              - "not _appliance_cert.expired"
 
     - name: "Validate port reachability for {{ inventory_hostname }}"
       ansible.builtin.wait_for:

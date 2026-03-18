@@ -1,6 +1,12 @@
 ---
 # defaults file for host
 host_folder_mode_default: "0755"
+# Synology appliance defaults
 host_synology_dsm_port: 5001
 host_synology_cert_desc: "Step-CA Managed"
 host_synology_nginx_restart_wait: 5
+# Appliance cert validation
+host_appliance_cert_issuer_org: "McHomeLab CA"
+# HP printer appliance defaults
+host_printer_pfx_password: "temppass"
+host_printer_cert_activation_wait: 3

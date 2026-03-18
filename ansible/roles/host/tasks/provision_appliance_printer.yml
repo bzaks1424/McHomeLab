@@ -1,0 +1,64 @@
+---
+# BTF: provision_appliance_printer.yml
+# Issues a Step-CA cert and uploads it to HP EWS via PKCS12 upload.
+#
+# The cert upload uses curl via ansible.builtin.command because
+# ansible.builtin.uri cannot handle binary PFX files in form-multipart
+# (fails with "utf-8 codec can't encode character").
+#
+# HP EWS cert upload:
+# - PKCS12 format, leaf cert + key only (no CA chain)
+# - No authentication required on consumer HP models
+# - Single cert slot — each upload overwrites the previous cert
+# - Cert activates immediately, no reboot needed
+
+- name: "Load appliance vars"
+  ansible.builtin.include_vars: "vars/appliance.yml"
+
+- name: "Issue certificate for {{ inventory_hostname }}"
+  ansible.builtin.include_role:
+    name: step-ca-cert
+
+- name: "Convert PEM to PFX for {{ inventory_hostname }}"
+  ansible.builtin.command:
+    argv:
+      - "openssl"
+      - "pkcs12"
+      - "-export"
+      - "-out"
+      - "{{ host_cert_pfx_path }}"
+      - "-inkey"
+      - "{{ host_cert_key_path }}"
+      - "-in"
+      - "{{ host_cert_path }}"
+      - "-passout"
+      - "pass:{{ host_printer_pfx_password }}"
+  changed_when: true
+
+- name: "Upload certificate to HP EWS on {{ inventory_hostname }}"
+  ansible.builtin.command:
+    argv:
+      - "curl"
+      - "-sk"
+      - "https://{{ ansible_host }}/Security/DeviceCertificates/NewCertWithPassword/Upload?fixed_response=true"
+      - "--form"
+      - "certificate=@{{ host_cert_pfx_path }};type=application/x-pkcs12;filename=certificate.pfx"
+      - "--form"
+      - "password={{ host_printer_pfx_password }}"
+  register: _printer_upload_raw
+  changed_when: true
+
+- name: "Verify certificate upload succeeded"
+  ansible.builtin.assert:
+    that:
+      - "'<err:HttpCode>201</err:HttpCode>' in _printer_upload_raw.stdout"
+    fail_msg: "Certificate upload to printer failed: {{ _printer_upload_raw.stdout }}"
+
+- name: "Wait for printer to activate new cert"
+  ansible.builtin.pause:
+    seconds: "{{ host_printer_cert_activation_wait }}"
+
+- name: "Remove temporary PFX file"
+  ansible.builtin.file:
+    path: "{{ host_cert_pfx_path }}"
+    state: "absent"

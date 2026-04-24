@@ -11,12 +11,28 @@
     environment:
       VPN_SERVICE_PROVIDER: "{{ config.vpn_provider }}"
       VPN_TYPE: "{{ config.vpn_type }}"
+{% if config.vpn_type == "wireguard" %}
+      WIREGUARD_PRIVATE_KEY: "{{ config.wireguard_private_key }}"
+{% if config.wireguard_preshared_key is defined %}
+      WIREGUARD_PRESHARED_KEY: "{{ config.wireguard_preshared_key }}"
+{% endif %}
+{% if config.wireguard_addresses is defined %}
+      WIREGUARD_ADDRESSES: "{{ config.wireguard_addresses }}"
+{% endif %}
+{% else %}
       OPENVPN_USER: "{{ config.vpn_user }}"
       OPENVPN_PASSWORD: "{{ config.vpn_password }}"
+{% endif %}
 {% if config.server_countries is defined %}
       SERVER_COUNTRIES: "{{ config.server_countries }}"
 {% endif %}
+{% if config.server_names is defined %}
+      SERVER_NAMES: "{{ config.server_names }}"
+{% endif %}
       FIREWALL_OUTBOUND_SUBNETS: "{{ config.firewall_outbound_subnets }}"
+{% if config.firewall_vpn_input_ports is defined %}
+      FIREWALL_VPN_INPUT_PORTS: "{{ config.firewall_vpn_input_ports }}"
+{% endif %}
 {% if service_gluetun_tunneled | length > 0 %}
     labels:
       - "traefik.enable=true"

@@ -217,6 +217,10 @@ all:
             options: defaults,vers=4.1,auto,_netdev,hard,intr
 
       services:
+        # Plex intentionally stays on host network (not listed here).
+        # Remote access, direct-play relay, DLNA, and LAN discovery all
+        # assume a consistent public IP matching the plex.tv handshake.
+        # VPN breaks remote access.
         traefik:
           priority: 0
           type: infrastructure
@@ -232,13 +236,24 @@ all:
         gluetun:
           priority: 5
           type: infrastructure
+          # AirVPN via WireGuard. PF is user-assigned (static) via AirVPN
+          # Client Area → Forwarded Ports. See research/RESEARCH_AIRVPN_MIGRATION.md.
+          # Real secrets live in Ansible Vault; values here are fake literals
+          # for lint-only (ansible-connection=local in test.yml).
           config:
-            vpn_provider: "nordvpn"
-            vpn_type: "openvpn"
-            vpn_user: "fake-vpn-user"
-            vpn_password: "fake-vpn-pass"
-            server_countries: "Canada"
+            vpn_provider: "airvpn"
+            vpn_type: "wireguard"
+            wireguard_private_key: "FAKE_PRIVATE_KEY_BASE64_PLACEHOLDER=="
+            wireguard_preshared_key: "FAKE_PRESHARED_KEY_BASE64_PLACEHOLDER=="
+            wireguard_addresses: "10.128.0.2/32"
+            # Pin one server: PF port is only live on the currently-connected
+            # server. SERVER_NAMES avoids gluetun#2667. Real deploy picks
+            # a specific server name from AirVPN's current US list.
+            server_names: "Alnitak"
             firewall_outbound_subnets: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+            # Single AirVPN-assigned forwarded port. Do NOT list multiple
+            # ports here (gluetun#2719 silently breaks).
+            firewall_vpn_input_ports: "12345"
 
         qbittorrent:
           priority: 10
@@ -259,10 +274,52 @@ all:
           traefik:
             port: 8080
 
+        prowlarr:
+          priority: 15
+          image: "lscr.io/linuxserver/prowlarr:latest"
+          dns_name: prowlarr
+          # Behind gluetun: Prowlarr's download-proxy call to private trackers
+          # must come from the same public IP as qBit, or tracker-side
+          # account fingerprinting treats them as separate users.
+          network_mode: "service:gluetun"
+          depends_on:
+            gluetun:
+              condition: service_healthy
+          environment:
+            PUID: "1028"
+            PGID: "100"
+            TZ: "America/Chicago"
+          volumes:
+            - "/opt/containers/prowlarr:/config"
+          traefik:
+            port: 9696
+
+        sonarr:
+          priority: 20
+          image: "lscr.io/linuxserver/sonarr:latest"
+          dns_name: sonarr
+          network_mode: "service:gluetun"
+          depends_on:
+            gluetun:
+              condition: service_healthy
+          environment:
+            PUID: "1028"
+            PGID: "100"
+            TZ: "America/Chicago"
+          volumes:
+            - "/opt/containers/sonarr:/config"
+            - "/media/plex:/data"
+          traefik:
+            port: 8989
+
         radarr:
           priority: 20
           image: "lscr.io/linuxserver/radarr:latest"
           dns_name: radarr
+          network_mode: "service:gluetun"
+          depends_on:
+            gluetun:
+              condition: service_healthy
           environment:
             PUID: "1028"
             PGID: "100"
@@ -273,9 +330,74 @@ all:
           traefik:
             port: 7878
 
+        bazarr:
+          priority: 25
+          image: "lscr.io/linuxserver/bazarr:latest"
+          dns_name: bazarr
+          network_mode: "service:gluetun"
+          depends_on:
+            gluetun:
+              condition: service_healthy
+          environment:
+            PUID: "1028"
+            PGID: "100"
+            TZ: "America/Chicago"
+          volumes:
+            - "/opt/containers/bazarr:/config"
+            - "/media/plex:/data"
+          traefik:
+            port: 6767
+
+        qbit-manage:
+          priority: 30
+          image: "ghcr.io/stuffanthings/qbit_manage:latest"
+          network_mode: "service:gluetun"
+          depends_on:
+            gluetun:
+              condition: service_healthy
+          environment:
+            PUID: "1028"
+            PGID: "100"
+            TZ: "America/Chicago"
+          volumes:
+            - "/opt/containers/qbit-manage:/config"
+            - "/media/plex:/data"
+          traefik: false
+
+        qbitrr:
+          priority: 35
+          image: "feramance/qbitrr:latest"
+          network_mode: "service:gluetun"
+          depends_on:
+            gluetun:
+              condition: service_healthy
+          environment:
+            TZ: "America/Chicago"
+          volumes:
+            - "/opt/containers/qbitrr:/config"
+          traefik: false
+
+        cross-seed:
+          priority: 40
+          image: "ghcr.io/cross-seed/cross-seed:latest"
+          network_mode: "service:gluetun"
+          depends_on:
+            gluetun:
+              condition: service_healthy
+          environment:
+            TZ: "America/Chicago"
+          volumes:
+            - "/opt/containers/cross-seed:/config"
+            - "/media/plex:/data"
+          traefik: false
+
         recyclarr:
           priority: 45
           image: "ghcr.io/recyclarr/recyclarr:latest"
+          network_mode: "service:gluetun"
+          depends_on:
+            gluetun:
+              condition: service_healthy
           traefik: false
           environment:
             TZ: "America/Chicago"

@@ -1,0 +1,9 @@
+---
+# vars file for {{ role_name }}
+rsyslog_template_base: "etc/rsyslog.d/90-synology.conf"
+rsyslog_template_src: "{{ rsyslog_template_base }}.j2"
+rsyslog_template_dest: "/{{ rsyslog_template_base }}"
+rsyslog_template_mode: "0644"
+rsyslog_service_name: "{{ role_name }}"
+rsyslog_server: "{{ ext_syslog_server | default(rsyslog_server_default) }}"
+rsyslog_port: "{{ ext_syslog_port | default(rsyslog_port_default) }}"

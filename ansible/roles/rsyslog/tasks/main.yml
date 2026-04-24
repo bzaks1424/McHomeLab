@@ -1,0 +1,9 @@
+---
+# tasks file for {{ role_name }}
+- name: "Deploy rsyslog forwarding config"
+  ansible.builtin.template:
+    src: "{{ rsyslog_template_src }}"
+    dest: "{{ rsyslog_template_dest }}"
+    mode: "{{ rsyslog_template_mode }}"
+    backup: true
+  notify: "Restart {{ rsyslog_service_name }}"

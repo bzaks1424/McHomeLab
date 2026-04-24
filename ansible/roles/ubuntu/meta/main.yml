@@ -35,6 +35,7 @@ dependencies:
   - apt
   - ca-certificates
   - chrony
+  - rsyslog
   - vim-tiny
   # List your role dependencies here, one per line. Be sure to remove the '[]' above,
   # if you add dependencies to this list.

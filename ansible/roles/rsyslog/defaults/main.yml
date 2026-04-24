@@ -1,0 +1,4 @@
+---
+# defaults file for {{ role_name }}
+rsyslog_server_default: "syslog.example.com"
+rsyslog_port_default: 514

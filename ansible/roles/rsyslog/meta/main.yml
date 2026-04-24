@@ -1,0 +1,14 @@
+galaxy_info:
+  author: bzaks1424
+  description: >
+    Configures syslog forwarding via {{ role_name }}.
+    Deploys a drop-in config to forward all syslog to a central log server.
+  company: McHomeLab
+
+  license: BSD-3-Clause
+
+  min_ansible_version: "2.1"
+
+  galaxy_tags: []
+
+dependencies: []

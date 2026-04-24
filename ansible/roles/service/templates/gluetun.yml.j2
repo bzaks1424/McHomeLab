@@ -47,6 +47,7 @@
       - "traefik.http.routers.{{ tun_name }}.entrypoints=websecure"
       - "traefik.http.routers.{{ tun_name }}.tls=true"
       - "traefik.http.routers.{{ tun_name }}.tls.certresolver={{ traefik_cert_resolver }}"
+      - "traefik.http.routers.{{ tun_name }}.service={{ tun_name }}"
       - "traefik.http.services.{{ tun_name }}.loadbalancer.server.port={{ tun_svc.traefik.port }}"
 {% if tun_svc.traefik.https_redirect | default(false) %}
 {% if tun_svc.dns_name is defined %}
@@ -55,6 +56,7 @@
       - "traefik.http.routers.{{ tun_name }}-http.rule={{ tun_svc.traefik.rule }}"
 {% endif %}
       - "traefik.http.routers.{{ tun_name }}-http.entrypoints=web"
+      - "traefik.http.routers.{{ tun_name }}-http.service={{ tun_name }}"
       - "traefik.http.routers.{{ tun_name }}-http.middlewares={{ tun_name }}-redirect"
       - "traefik.http.middlewares.{{ tun_name }}-redirect.redirectscheme.scheme=https"
 {% endif %}

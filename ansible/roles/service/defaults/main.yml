@@ -8,3 +8,4 @@ traefik_image: "traefik:v3.6"
 traefik_cert_resolver: "step-ca"
 traefik_admin_port: 9880
 gluetun_image: "qmcgaw/gluetun:v3"
+diun_image: "crazymax/diun:4.33.0"

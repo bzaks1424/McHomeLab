@@ -1,0 +1,28 @@
+{# Diun infrastructure service template — fleet-wide image update notifier #}
+{# Watch list comes from the file provider (diun-watch.yml), derived from   #}
+{# every services.*.image in the inventory. Notify-only: never updates.     #}
+{% set diun = service_infra_services.diun %}
+{% set config = diun.config %}
+  diun:
+    image: {{ diun_image }}
+    restart: {{ diun.restart | default('unless-stopped') }}
+    command: serve
+    environment:
+      TZ: "{{ config.tz | default('America/Chicago') }}"
+      LOG_LEVEL: "{{ config.log_level | default('info') }}"
+      DIUN_WATCH_SCHEDULE: "{{ config.schedule | default('0 */6 * * *') }}"
+      DIUN_PROVIDERS_FILE_FILENAME: "/watch.yml"
+{% if config.webhook_endpoint is defined %}
+      DIUN_NOTIF_WEBHOOK_ENDPOINT: "{{ config.webhook_endpoint }}"
+      DIUN_NOTIF_WEBHOOK_METHOD: "POST"
+{% endif %}
+    volumes:
+      - "{{ config.data_volume }}:/data"
+      - "{{ service_dir }}/diun-watch.yml:/watch.yml:ro"
+    labels:
+      - "traefik.enable=false"
+    healthcheck:
+      test: ["CMD", "diun", "healthcheck"]
+      interval: 60s
+      timeout: 10s
+      retries: 3

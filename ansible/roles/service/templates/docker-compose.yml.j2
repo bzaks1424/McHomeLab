@@ -9,6 +9,8 @@ services:
 {% include 'traefik.yml.j2' %}
 {% elif svc_name == 'gluetun' %}
 {% include 'gluetun.yml.j2' %}
+{% elif svc_name == 'diun' %}
+{% include 'diun.yml.j2' %}
 {% endif %}
 {% else %}
   {{ svc_name }}:

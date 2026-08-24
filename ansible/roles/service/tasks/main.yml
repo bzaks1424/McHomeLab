@@ -5,11 +5,13 @@
     state: directory
     mode: "{{ service_dir_mode }}"
 
-- name: "Pre-create bind mount directories"
-  ansible.builtin.file:
+# A bind mount source may be a file delivered by an import entry (e.g. the
+# root CA cert) — only pre-create sources that don't exist yet, so docker
+# doesn't create them as root-owned directories.
+- name: "Stat bind mount sources"
+  ansible.builtin.stat:
     path: "{{ item }}"
-    state: directory
-    mode: "{{ service_dir_mode }}"
+  register: service_bind_mount_stats
   loop: >-
     {{
       ((service_services | dict2items
@@ -33,8 +35,18 @@
       {{ (hostvars[inventory_hostname].provision.mounts | default([]))
          | map(attribute='path') | list }}
     _infra_volume_paths: >-
-      {{ [service_infra_services.traefik.config.certs_volume | default('')]
+      {{ [service_infra_services.traefik.config.certs_volume | default(''),
+          service_infra_services.diun.config.data_volume | default('')]
          | select | list }}
+
+- name: "Pre-create missing bind mount directories"
+  ansible.builtin.file:
+    path: "{{ item.item }}"
+    state: directory
+    mode: "{{ service_dir_mode }}"
+  loop: "{{ service_bind_mount_stats.results | rejectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.item }}"
 
 - name: "Template docker-compose.yml"
   ansible.builtin.template:
@@ -49,6 +61,13 @@
   ansible.builtin.template:
     src: traefik-external.yml.j2
     dest: "{{ service_dir }}/traefik-external.yml"
+    mode: "{{ service_file_mode }}"
+
+- name: "Template diun watch list"
+  when: "'diun' in service_infra_services"
+  ansible.builtin.template:
+    src: diun-watch.yml.j2
+    dest: "{{ service_dir }}/diun-watch.yml"
     mode: "{{ service_file_mode }}"
 
 - name: "Deploy compose stack"

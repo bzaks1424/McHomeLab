@@ -354,6 +354,29 @@ out of WUD again) lives in inventory `all.vars` as `wud_lscr_username`/
 `wud_lscr_token`; `wud.yml.j2` templates the registry when the token is
 defined. Verified: registry `lscr.linuxserver` loaded, media watcher **12/12**.
 
+### 6.5 Pinning pass — EXECUTED 2026-08-24 (STRATEGY §6.3 B/C, §7 items 3–4)
+- `service_pull_policy` wired (default `policy` = the module default, verified
+  via `ansible-doc`; STRATEGY assumed `missing` — same effect). Apply switch:
+  `-e service_pull_policy=always`.
+- Generic `labels:` passthrough in `docker-compose.yml.j2` (regular *and*
+  gluetun-tunneled services); infra templates carry built-in `wud.tag.include`
+  regexes (`traefik_/gluetun_/wud_wud_tag_include` defaults). `$` in label
+  values is compose-escaped (`$$`) by the templates.
+- Every image pinned to the exact running build (digest/label verified, tag
+  existence verified per registry) except: **qbitrr** upgraded to `v5.14.4-1`
+  (its March build's tag no longer resolvable — user chose "newer + pin");
+  **traefik** `v3.6.12` fleet-wide (util/unifi took 3.6.10→3.6.12);
+  **apt-cacher-ng** stays `:latest` + `wud.watch.digest=true` (only tag upstream).
+- Run: one full site.yml, every container recreated once (images identical
+  bar the three above), qBittorrent still on `tun0`, all healthy. WUD now reports
+  `semver=true` for 18/19 with real targets (traefik v3.7.11, homepage v2.1.2,
+  step-ca 0.30.2, gluetun v3.41.3, radarr 6.3.0.10514-ls314, …) — that list IS
+  the §7 item 5 backlog.
+- Gotcha found: semver compares alphanumeric prerelease ids lexically, so WUD
+  mis-ranked sonarr (`4.0.9…` over `4.0.17…`) and netbootxyz (`nbxyz9` over
+  `nbxyz24`). Fix per WUD docs: `wud.tag.transform` normalising to
+  `major.minor.patch-<build>` on the five linuxserver images and netbootxyz.
+
 ## 7. What this plan does not do
 - Pin the fleet's `:latest` tags, add `service_pull_policy`, or update any
   container (STRATEGY §6.3/§7 — later).

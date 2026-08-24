@@ -33,8 +33,9 @@
 {% if config.firewall_vpn_input_ports is defined %}
       FIREWALL_VPN_INPUT_PORTS: "{{ config.firewall_vpn_input_ports }}"
 {% endif %}
-{% if service_gluetun_tunneled | length > 0 %}
     labels:
+      - 'wud.tag.include={{ gluetun_wud_tag_include | replace('$', '$$') }}'
+{% if service_gluetun_tunneled | length > 0 %}
       - "traefik.enable=true"
 {% for tun_name, tun_svc in service_gluetun_tunneled.items() %}
 {% if tun_svc.traefik is defined and tun_svc.traefik != false %}

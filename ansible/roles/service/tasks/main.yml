@@ -109,3 +109,4 @@
     project_src: "{{ service_dir }}"
     state: present
     remove_orphans: true   # hosts.yml is authoritative: removed services are removed
+    pull: "{{ service_pull_policy }}"

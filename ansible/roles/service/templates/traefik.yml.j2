@@ -49,10 +49,11 @@
 {# Opt traefik in to WUD explicitly (config.wud_watch) — needed where the WUD   #}
 {# watcher for this host runs opt-in (WATCHBYDEFAULT=false), e.g. unifi, whose #}
 {# dockerd also hosts Ubiquiti's unms project that must stay unwatched.        #}
-{% if config.wud_watch | default(false) %}
     labels:
+{% if config.wud_watch | default(false) %}
       - "wud.watch=true"
 {% endif %}
+      - 'wud.tag.include={{ traefik_wud_tag_include | replace('$', '$$') }}'
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--ping"]
       interval: 10s

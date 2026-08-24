@@ -13,3 +13,13 @@ wud_image: "getwud/wud:8.3.1"
 service_wud_cert_duration: "43800h"
 service_wud_cert_renewal_threshold: "720h"
 service_wud_tls_dir_name: "docker-tls/client"
+# Image pull policy for the compose deploy (STRATEGY §6.3 C). "policy" is the
+# module default: pull only what compose's own pull_policy says (i.e. missing
+# images) — today's behaviour exactly. Override per run to apply an update:
+#   ansible-playbook site.yml -e service_pull_policy=always
+service_pull_policy: "policy"
+# WUD tag regexes for the infrastructure images (keeps WUD comparing against
+# real Linux release tags — e.g. traefik's "v3.7-windowsservercore" is noise)
+traefik_wud_tag_include: '^v\d+\.\d+\.\d+$'
+gluetun_wud_tag_include: '^v\d+\.\d+\.\d+$'
+wud_wud_tag_include: '^\d+\.\d+\.\d+$'

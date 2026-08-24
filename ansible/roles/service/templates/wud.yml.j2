@@ -52,6 +52,7 @@
 {% endif %}
     labels:
       - "wud.watch=true"
+      - 'wud.tag.include={{ wud_wud_tag_include | replace('$', '$$') }}'
       - "traefik.enable=true"
       - "traefik.http.routers.wud.rule=Host(`{{ fqdn }}`)"
       - "traefik.http.routers.wud.entrypoints=websecure"

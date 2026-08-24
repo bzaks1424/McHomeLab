@@ -34,6 +34,9 @@
     append: true
     state: present
   register: docker_user
+- name: "Issue remote-API TLS material (controller-side)"
+  ansible.builtin.include_tasks: tls.yml
+  when: docker_remote_api | bool
 - name: "Ensure docker unit override directory exists"
   ansible.builtin.file:
     path: "{{ docker_unit_override_dir }}"

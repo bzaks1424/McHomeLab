@@ -4,3 +4,17 @@ docker_ubuntu_url: "https://download.docker.com/linux/ubuntu"
 docker_ubuntu_asc_url: "{{ docker_ubuntu_url }}/gpg"
 docker_keyring_asc: "{{ docker_keyring_path_default }}/docker.asc"
 docker_ubuntu_repo: "deb [arch=amd64 signed-by={{ docker_keyring_asc }}] {{ docker_ubuntu_url }} {{ ansible_distribution_release }} stable"
+# --- remote API (dockerd over TCP + mTLS), driven by hosts.yml `docker:` block ---
+docker_remote_api: "{{ hostvars[inventory_hostname].docker.remote_api | default(false) }}"
+docker_tls_host_ip: "{{ hostvars[inventory_hostname].provision.hardware.networks[0].ip | default('SHOULD_NOT_BE_HERE') }}"
+docker_tls_cn: "{{ ansible_host }}"
+docker_tls_sans:
+  - "{{ ansible_host }}"
+  - "{{ docker_tls_host_ip }}"
+docker_tls_dir: "{{ export_root }}/{{ inventory_hostname }}/{{ docker_tls_dir_name }}"
+docker_tls_cert_path: "{{ docker_tls_dir }}/cert.pem"
+docker_tls_key_path: "{{ docker_tls_dir }}/key.pem"
+# CA material comes from the registry (exported by whichever host runs step-ca)
+docker_tls_root_path: "{{ hostvars['localhost'].registry | registry_get('root_ca_cert') }}"
+docker_tls_ca_url: "{{ step_ca_url | default('SHOULD_NOT_BE_HERE') }}"
+docker_tls_provisioner_password: "{{ step_ca_provisioner_password | default('SHOULD_NOT_BE_HERE') }}"

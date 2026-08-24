@@ -1,0 +1,19 @@
+---
+# Server-side TLS leaf for dockerd's TCP listener. Issued on the controller
+# from step-ca (research/RESEARCH_WUD_MTLS.md step 2); delivery to the host
+# and the listener itself are step 3. Nothing here touches the target host.
+# step-ca writes cert.pem as leaf + intermediate already, so it is the chain.
+- name: "Issue dockerd server certificate for {{ inventory_hostname }}"
+  ansible.builtin.include_role:
+    name: step-ca-cert
+  vars:
+    step_ca_cert_cn: "{{ docker_tls_cn }}"
+    step_ca_cert_sans: "{{ docker_tls_sans }}"
+    step_ca_cert_dir: "{{ docker_tls_dir }}"
+    step_ca_cert_path: "{{ docker_tls_cert_path }}"
+    step_ca_cert_key_path: "{{ docker_tls_key_path }}"
+    step_ca_cert_root_path: "{{ docker_tls_root_path }}"
+    step_ca_cert_url: "{{ docker_tls_ca_url }}"
+    step_ca_cert_provisioner_password: "{{ docker_tls_provisioner_password }}"
+    step_ca_cert_duration: "{{ docker_tls_cert_duration }}"
+    step_ca_cert_renewal_threshold: "{{ docker_tls_cert_renewal_threshold }}"

@@ -30,3 +30,12 @@ service_gluetun_tunneled: >-
 
 # CA cert container path — derived from import entry basename
 service_ca_cert_container_path: "/etc/ssl/certs/{{ hostvars[inventory_hostname] | inventory_entry('import', 'root_ca_cert', 'dest', '') | basename }}"
+
+# --- WUD client leaf (issued on the controller; mounted into the container at step 5) ---
+service_wud_tls_cn: "wud.{{ ansible_host }}"
+service_wud_tls_dir: "{{ export_root }}/{{ inventory_hostname }}/{{ service_wud_tls_dir_name }}"
+service_wud_tls_cert_path: "{{ service_wud_tls_dir }}/cert.pem"
+service_wud_tls_key_path: "{{ service_wud_tls_dir }}/key.pem"
+service_wud_tls_root_path: "{{ hostvars['localhost'].registry | registry_get('root_ca_cert') }}"
+service_wud_tls_ca_url: "{{ step_ca_url | default('SHOULD_NOT_BE_HERE') }}"
+service_wud_tls_provisioner_password: "{{ step_ca_provisioner_password | default('SHOULD_NOT_BE_HERE') }}"

@@ -9,3 +9,7 @@ traefik_cert_resolver: "step-ca"
 traefik_admin_port: 9880
 gluetun_image: "qmcgaw/gluetun:v3"
 wud_image: "getwud/wud:8.3.1"
+# WUD client certificate for remote docker watchers (research/RESEARCH_WUD_MTLS.md)
+service_wud_cert_duration: "43800h"
+service_wud_cert_renewal_threshold: "720h"
+service_wud_tls_dir_name: "docker-tls/client"

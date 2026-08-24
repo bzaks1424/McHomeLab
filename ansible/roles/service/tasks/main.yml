@@ -48,6 +48,24 @@
   loop_control:
     label: "{{ item.item }}"
 
+- name: "Issue WUD client certificate for remote docker watchers (controller-side)"
+  when: "'wud' in service_infra_services"
+  block:
+    - name: "Issue WUD client certificate"
+      ansible.builtin.include_role:
+        name: step-ca-cert
+      vars:
+        step_ca_cert_cn: "{{ service_wud_tls_cn }}"
+        step_ca_cert_sans: ["{{ service_wud_tls_cn }}"]
+        step_ca_cert_dir: "{{ service_wud_tls_dir }}"
+        step_ca_cert_path: "{{ service_wud_tls_cert_path }}"
+        step_ca_cert_key_path: "{{ service_wud_tls_key_path }}"
+        step_ca_cert_root_path: "{{ service_wud_tls_root_path }}"
+        step_ca_cert_url: "{{ service_wud_tls_ca_url }}"
+        step_ca_cert_provisioner_password: "{{ service_wud_tls_provisioner_password }}"
+        step_ca_cert_duration: "{{ service_wud_cert_duration }}"
+        step_ca_cert_renewal_threshold: "{{ service_wud_cert_renewal_threshold }}"
+
 - name: "Template docker-compose.yml"
   ansible.builtin.template:
     src: docker-compose.yml.j2

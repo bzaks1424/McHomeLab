@@ -1,7 +1,7 @@
 # RESEARCH: WUD single instance + remote Docker watchers over mTLS
 
 **Date:** 2026-08-24
-**Status:** IN PROGRESS — step 1 executed 2026-08-24 (see §3); steps 2–7 pending. Steps below are small,
+**Status:** IN PROGRESS — steps 1–2 executed 2026-08-24 (see §3); steps 3–7 pending. Steps below are small,
 each independently verifiable, each its own commit. Check in before every
 playbook run and every commit.
 **Supersedes:** the per-host WUD topology in
@@ -147,10 +147,10 @@ consumer.
     `{{ export_root }}/unifi/docker-tls/…`
   - `wud.util.michaelpmcd.com` client leaf → `{{ export_root }}/util/docker-tls/…`
   step-ca's default leaf template carries both `serverAuth` and `clientAuth`
-  EKUs, so one issuance path serves both roles (verify on the first cert with
-  `step certificate inspect`). Each host gets a chain file
-  (leaf + intermediate) so Go's TLS presents the full chain; the trust file on
-  every side is `{{ export_root }}/util/root_ca_cert`.
+  EKUs, so one issuance path serves both roles (verified: both present).
+  step-ca writes `cert.pem` as leaf + intermediate, so it already *is* the chain
+  Go's TLS presents; the trust file on every side is the registry's
+  `root_ca_cert` (no hardcoded host).
   Where this lives in the play: a new `docker_tls` task file in `roles/docker`,
   run for hosts with `docker.remote_api: true` (server leaves) and for the host
   running WUD (client leaf) — issuance happens on the controller inside that
@@ -161,6 +161,11 @@ consumer.
   a second run changes nothing (`needs-renewal` gate).
 - **Rollback:** delete the `docker-tls/` directories.
 - **Commit:** "docker role: issue dockerd/WUD mTLS leaves from step-ca".
+- **EXECUTED 2026-08-24.** Three leaves issued (`changed=3` on media/unifi/util,
+  all `-> localhost`, no docker restart, no compose change). Verified with
+  `step certificate inspect/verify`: SANs DNS+IP on the server leaves, both
+  EKUs, issuer = McHomeLab Intermediate, chain to root OK, keys 0600. Second
+  run: no-op (see §5.5 for dates).
 
 ### Step 3 — dockerd listens on TCP 2376 with mTLS (media, then unifi)
 - **Change:** `roles/docker` copies the root CA, the chain (leaf+intermediate) and the key to
@@ -271,8 +276,16 @@ honestly in memory.
    fleet-wide project.
 
 ### 5.5 Calendar
-When step 2 runs, write the exact `not_after` of each leaf (and of the step-ca
-root and intermediate) into this section and into `project_wud_mtls` memory.
+| cert | not_before | not_after | renewal window opens |
+|---|---|---|---|
+| media server leaf | 2026-08-24 | **2031-08-23** | 2031-07-24 |
+| unifi server leaf | 2026-08-24 | **2031-08-23** | 2031-07-24 |
+| wud client leaf | 2026-08-24 | **2031-08-23** | 2031-07-24 |
+| step-ca root / intermediate | — | (record from util `ca.json`/certs when convenient) | — |
+
+All three renew in the same window: one site.yml run in July 2031 rotates the
+lot; the docker-role handler restarts dockerd (container-safe) and the service
+role recreates wud.
 Optional: a controller cron running `site.yml` monthly would make 5.2
 unattended — **not** planned here; the user runs site.yml often enough today
 and the tripwire covers the gap.

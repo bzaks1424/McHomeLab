@@ -24,3 +24,9 @@ docker_unit_override_dir: "/etc/systemd/system/docker.service.d"
 docker_unit_override_path: "/etc/systemd/system/docker.service.d/override.conf"
 docker_dockerd_bin: "/usr/bin/dockerd"
 docker_containerd_sock: "/run/containerd/containerd.sock"
+# --- remote API TLS leaves (Step 2 of research/RESEARCH_WUD_MTLS.md) ---
+# Issued from step-ca via the step-ca-cert role; 5 years, renewed in place by
+# any site.yml run inside the last 30 days of validity.
+docker_tls_cert_duration: "43800h"
+docker_tls_cert_renewal_threshold: "720h"
+docker_tls_dir_name: "docker-tls"

@@ -36,7 +36,7 @@
          | map(attribute='path') | list }}
     _infra_volume_paths: >-
       {{ [service_infra_services.traefik.config.certs_volume | default(''),
-          service_infra_services.diun.config.data_volume | default('')]
+          service_infra_services.wud.config.data_volume | default('')]
          | select | list }}
 
 - name: "Pre-create missing bind mount directories"
@@ -63,14 +63,8 @@
     dest: "{{ service_dir }}/traefik-external.yml"
     mode: "{{ service_file_mode }}"
 
-- name: "Template diun watch list"
-  when: "'diun' in service_infra_services"
-  ansible.builtin.template:
-    src: diun-watch.yml.j2
-    dest: "{{ service_dir }}/diun-watch.yml"
-    mode: "{{ service_file_mode }}"
-
 - name: "Deploy compose stack"
   community.docker.docker_compose_v2:
     project_src: "{{ service_dir }}"
     state: present
+    remove_orphans: true   # hosts.yml is authoritative: removed services are removed

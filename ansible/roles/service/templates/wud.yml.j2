@@ -1,0 +1,45 @@
+{# WUD (What's Up Docker) infrastructure service template — per-host image  #}
+{# update notifier. Watches the LOCAL docker socket only (one instance per  #}
+{# docker host; never expose dockerd on TCP). Publishes to HA over MQTT.    #}
+{# NOTIFY-ONLY: no WUD_TRIGGER_DOCKER_* variable is ever templated here.    #}
+{% set wud = service_infra_services.wud %}
+{% set config = wud.config %}
+{% set fqdn = (config.dns_name | default('wud')) ~ '.' ~ ansible_host %}
+  wud:
+    image: {{ wud_image }}
+    restart: {{ wud.restart | default('unless-stopped') }}
+    environment:
+      TZ: "{{ config.tz | default('America/Chicago') }}"
+      WUD_WATCHER_LOCAL_CRON: "{{ config.cron | default('0 */6 * * *') }}"
+{% if config.watch_by_default is defined %}
+      WUD_WATCHER_LOCAL_WATCHBYDEFAULT: "{{ config.watch_by_default | string | lower }}"
+{% endif %}
+      WUD_TRIGGER_MQTT_HA_URL: "{{ wud_mqtt_url }}"
+      WUD_TRIGGER_MQTT_HA_USER: "{{ wud_mqtt_user }}"
+      WUD_TRIGGER_MQTT_HA_PASSWORD: "{{ wud_mqtt_password }}"
+      WUD_TRIGGER_MQTT_HA_HASS_ENABLED: "true"
+      WUD_TRIGGER_MQTT_HA_HASS_DISCOVERY: "true"
+      WUD_TRIGGER_MQTT_HA_HASS_DEVICEID: "wud_{{ inventory_hostname }}"
+      WUD_TRIGGER_MQTT_HA_HASS_DEVICENAME: "WUD {{ inventory_hostname }}"
+      WUD_TRIGGER_MQTT_HA_TOPIC: "wud/{{ inventory_hostname }}"
+    volumes:
+      - "{{ config.data_volume }}:/store"
+      - "{{ service_docker_socket }}:{{ service_docker_socket }}:ro"
+    labels:
+      - "wud.watch=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.wud.rule=Host(`{{ fqdn }}`)"
+      - "traefik.http.routers.wud.entrypoints=websecure"
+      - "traefik.http.routers.wud.tls=true"
+      - "traefik.http.routers.wud.tls.certresolver={{ traefik_cert_resolver }}"
+      - "traefik.http.services.wud.loadbalancer.server.port=3000"
+      - "traefik.http.routers.wud-http.rule=Host(`{{ fqdn }}`)"
+      - "traefik.http.routers.wud-http.entrypoints=web"
+      - "traefik.http.routers.wud-http.middlewares=wud-redirect"
+      - "traefik.http.middlewares.wud-redirect.redirectscheme.scheme=https"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s

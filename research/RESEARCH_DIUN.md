@@ -1,7 +1,7 @@
 # RESEARCH: Diun — Docker Image Update Notifier for the Media Stack
 
 **Date:** 2026-07-19
-**Status:** IMPLEMENTED 2026-08-24 — with deliberate deviations from this doc (see below)
+**Status:** SUPERSEDED 2026-08-24 — Diun was deployed and then replaced the same day by What's Up Docker (WUD), one instance per docker host, MQTT → Home Assistant. Decision and rationale: `~/workspace/claude/workspace/container-updates/STRATEGY.md` §4b–§6. Kept as history; the incident analysis (§1) and the pin-then-bump reasoning still apply.
 **Target host:** util.michaelpmcd.com (not media — user decision)
 
 > **Implementation note (2026-08-24):** Diun runs on **util** as a fleet-wide

@@ -28,40 +28,5 @@ service_gluetun_tunneled: >-
      | selectattr('value.network_mode', 'eq', 'service:gluetun')
      | items2dict }}
 
-# Service definitions across every inventory host, as dict2items entries
-# (for the fleet-wide diun watch list)
-service_fleet_service_items: >-
-  {{ groups['all']
-     | map('extract', hostvars)
-     | map(attribute='services', default={})
-     | map('dict2items')
-     | flatten }}
-
-# Explicit images from regular services, fleet-wide, deduped
-service_fleet_regular_images: >-
-  {{ service_fleet_service_items
-     | selectattr('value.image', 'defined')
-     | map(attribute='value.image')
-     | unique | list }}
-
-# Infrastructure service names in use anywhere in the fleet
-service_fleet_infra_names: >-
-  {{ service_fleet_service_items
-     | selectattr('value.type', 'defined')
-     | selectattr('value.type', 'eq', 'infrastructure')
-     | map(attribute='key')
-     | unique | list }}
-
-# Images of infrastructure services in use anywhere in the fleet
-service_fleet_infra_images: >-
-  {{ ([traefik_image] if 'traefik' in service_fleet_infra_names else [])
-   + ([gluetun_image] if 'gluetun' in service_fleet_infra_names else [])
-   + ([diun_image] if 'diun' in service_fleet_infra_names else []) }}
-
-# Everything diun watches: every image referenced in the inventory
-service_diun_watch_images: >-
-  {{ (service_fleet_regular_images + service_fleet_infra_images)
-     | unique | list }}
-
 # CA cert container path — derived from import entry basename
 service_ca_cert_container_path: "/etc/ssl/certs/{{ hostvars[inventory_hostname] | inventory_entry('import', 'root_ca_cert', 'dest', '') | basename }}"

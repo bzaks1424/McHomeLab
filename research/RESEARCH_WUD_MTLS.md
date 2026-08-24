@@ -1,7 +1,7 @@
 # RESEARCH: WUD single instance + remote Docker watchers over mTLS
 
 **Date:** 2026-08-24
-**Status:** IN PROGRESS — steps 1–2 executed 2026-08-24 (see §3); steps 3–7 pending. Steps below are small,
+**Status:** IN PROGRESS — steps 1–3 executed 2026-08-24 (see §3); steps 4–7 pending. Steps below are small,
 each independently verifiable, each its own commit. Check in before every
 playbook run and every commit.
 **Supersedes:** the per-host WUD topology in
@@ -185,6 +185,16 @@ consumer.
 - **Rollback:** set `remote_api: false` → next run rewrites daemon.json
   without the TCP host and restarts (containers survive).
 - **Commit:** "docker role: optional mTLS TCP API (remote_api)".
+- **EXECUTED 2026-08-24**, media then unifi, one full site.yml each
+  (`changed=4` on the target, 0 elsewhere). Verified on both: `docker
+  --tlsverify … info` with the WUD client leaf succeeds; without a client
+  cert → `tls: certificate required`; plain HTTP rejected; `ss` shows 2376
+  bound to the host IP only (.34 / .35); local `docker ps` works over
+  `fd://`; container creation times identical before/after (dockerd
+  restarted, nothing bounced); UISP still answering. Controller `docker
+  context` entries `media` and `unifi` created with the same client leaf.
+  **Until step 4 lands, 2376 answers to any lab-CA cert holder who can
+  reach the DMZ IPs.**
 
 ### Step 4 — Firewall: 2376 reachable from util only
 - **Change:** UniFi rule(s) via `unifly`: allow `192.168.254.3 → DMZ:2376`;

@@ -18,3 +18,19 @@ docker_tls_key_path: "{{ docker_tls_dir }}/key.pem"
 docker_tls_root_path: "{{ hostvars['localhost'].registry | registry_get('root_ca_cert') }}"
 docker_tls_ca_url: "{{ step_ca_url | default('SHOULD_NOT_BE_HERE') }}"
 docker_tls_provisioner_password: "{{ step_ca_provisioner_password | default('SHOULD_NOT_BE_HERE') }}"
+# Listener config merged into daemon.json only when remote_api is on. Binds to
+# the host's own IP — never 0.0.0.0. tlsverify => clients must present a cert
+# chained to tlscacert (the lab root; see RESEARCH_WUD_MTLS.md D1).
+docker_tls_remote_ca_path: "{{ docker_tls_remote_dir }}/ca.pem"
+docker_tls_remote_cert_path: "{{ docker_tls_remote_dir }}/cert.pem"
+docker_tls_remote_key_path: "{{ docker_tls_remote_dir }}/key.pem"
+docker_daemon_tls_config:
+  hosts:
+    - "fd://"
+    - "tcp://{{ docker_tls_host_ip }}:{{ docker_remote_api_port }}"
+  tlsverify: true
+  tlscacert: "{{ docker_tls_remote_ca_path }}"
+  tlscert: "{{ docker_tls_remote_cert_path }}"
+  tlskey: "{{ docker_tls_remote_key_path }}"
+docker_daemon_config_effective: >-
+  {{ docker_daemon_config | combine(docker_daemon_tls_config if (docker_remote_api | bool) else {}) }}

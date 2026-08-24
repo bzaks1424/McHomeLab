@@ -17,3 +17,29 @@
     step_ca_cert_provisioner_password: "{{ docker_tls_provisioner_password }}"
     step_ca_cert_duration: "{{ docker_tls_cert_duration }}"
     step_ca_cert_renewal_threshold: "{{ docker_tls_cert_renewal_threshold }}"
+
+# --- Step 3: deliver to the host. Handler restart is flushed by main.yml
+# after daemon.json is templated, so the files are in place before dockerd
+# restarts (container-safe: live-restore).
+- name: "Ensure dockerd TLS directory exists"
+  ansible.builtin.file:
+    path: "{{ docker_tls_remote_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: "Deliver dockerd TLS material"
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "{{ docker_tls_remote_file_mode }}"
+  loop:
+    - { src: "{{ docker_tls_root_path }}", dest: "{{ docker_tls_remote_ca_path }}" }
+    - { src: "{{ docker_tls_cert_path }}", dest: "{{ docker_tls_remote_cert_path }}" }
+    - { src: "{{ docker_tls_key_path }}", dest: "{{ docker_tls_remote_key_path }}" }
+  loop_control:
+    label: "{{ item.dest }}"
+  notify: "Restart docker"

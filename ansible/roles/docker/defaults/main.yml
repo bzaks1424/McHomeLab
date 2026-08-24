@@ -30,3 +30,7 @@ docker_containerd_sock: "/run/containerd/containerd.sock"
 docker_tls_cert_duration: "43800h"
 docker_tls_cert_renewal_threshold: "720h"
 docker_tls_dir_name: "docker-tls"
+# --- remote API listener (Step 3 of research/RESEARCH_WUD_MTLS.md) ---
+docker_remote_api_port: 2376
+docker_tls_remote_dir: "/etc/docker/tls"
+docker_tls_remote_file_mode: "0600"

@@ -1,7 +1,7 @@
 # RESEARCH: WUD single instance + remote Docker watchers over mTLS
 
 **Date:** 2026-08-24
-**Status:** PLAN, decisions D1–D5 taken 2026-08-24 (§2) — not yet executed. Steps below are small,
+**Status:** IN PROGRESS — step 1 executed 2026-08-24 (see §3); steps 2–7 pending. Steps below are small,
 each independently verifiable, each its own commit. Check in before every
 playbook run and every commit.
 **Supersedes:** the per-host WUD topology in
@@ -127,6 +127,12 @@ consumer.
 - **Rollback:** remove daemon.json + drop-in, `systemctl daemon-reload`,
   restart docker.
 - **Commit:** "docker role: manage daemon.json and unit override; enable live-restore".
+- **EXECUTED 2026-08-24** (commit c1e4284, one full site.yml, exit 0). Verified
+  live: `live-restore=true` on util/media/unifi; every container back within
+  ~30 s per host (media's 12 incl. the gluetun namespace, unifi's traefik +
+  9 `unms`); qBittorrent still `current_network_interface=tun0`, port 60914;
+  UISP answering. Same run also brought WUD up on util (local watcher, MQTT)
+  and removed the diun container via `remove_orphans` (D5).
 
 ### Step 2 — Issue the three leaves from step-ca, controller-only (D1-A/D2)
 - **Change:** `roles/step-ca-cert` is reused as-is via `include_role` with
@@ -271,7 +277,22 @@ Optional: a controller cron running `site.yml` monthly would make 5.2
 unattended — **not** planned here; the user runs site.yml often enough today
 and the tripwire covers the gap.
 
-## 6. What this plan does not do
+## 6. Findings from WUD's first scan (2026-08-24) — decide during §6.3 pinning
+
+1. **`:latest` is mostly unwatched.** WUD logged for netbootxyz, apt-cacher-ng
+   and step-ca: *"not a semver and digest watching is disabled so wud won't
+   report any update"*. It did enable digest watching for homepage:latest.
+   STRATEGY §5's "digest watching is on by default for non-semver tags" is
+   **not** what the running instance does; the per-container `wud.watch.digest`
+   label (default `false` per the docs) governs it. Until the fleet is pinned,
+   most `:latest` containers will never trigger.
+2. **False positive on traefik:** `v3.6 → v3.7-windowsservercore-ltsc2025`.
+   WUD's tag matcher needs `wud.tag.include` (e.g. `^v\d+\.\d+$`) on traefik.
+3. Both need per-container labels. Infra templates (traefik/gluetun/wud) can
+   carry them directly; regular services need the generic `labels:` passthrough
+   in `docker-compose.yml.j2` that RESEARCH_DIUN.md §3.2 already called for.
+
+## 7. What this plan does not do
 - Pin the fleet's `:latest` tags, add `service_pull_policy`, or update any
   container (STRATEGY §6.3/§7 — later).
 - Expose the Docker API to anything but util's WUD (and the controller's

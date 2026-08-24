@@ -29,6 +29,12 @@
       WUD_WATCHER_{{ n }}_WATCHBYDEFAULT: "{{ r.watch_by_default | string | lower }}"
 {% endif %}
 {% endfor %}
+{% if wud_lscr_token is defined %}
+{# lscr.io has no public registry in WUD — a GitHub PAT is required, or the #}
+{# linuxserver images are silently unwatched (RESEARCH_WUD_MTLS.md §6.4).   #}
+      WUD_REGISTRY_LSCR_LINUXSERVER_USERNAME: "{{ wud_lscr_username }}"
+      WUD_REGISTRY_LSCR_LINUXSERVER_TOKEN: "{{ wud_lscr_token }}"
+{% endif %}
       WUD_TRIGGER_MQTT_HA_URL: "{{ wud_mqtt_url }}"
       WUD_TRIGGER_MQTT_HA_USER: "{{ wud_mqtt_user }}"
       WUD_TRIGGER_MQTT_HA_PASSWORD: "{{ wud_mqtt_password }}"

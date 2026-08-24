@@ -1,7 +1,7 @@
 # RESEARCH: WUD single instance + remote Docker watchers over mTLS
 
 **Date:** 2026-08-24
-**Status:** IN PROGRESS — steps 1–3 and 5 executed, step 4 skipped by decision (2026-08-24); step 6 (docs/commit) and 7 (HA card) pending. Open: LSCR registry token (§6.4). Steps below are small,
+**Status:** McHomeLab side COMPLETE 2026-08-24 — steps 1–3, 5, 6 executed; step 4 skipped by decision; LSCR closed with a PAT (§6.4). Step 7 (HA Admin card) belongs to the claude workspace. Steps below are small,
 each independently verifiable, each its own commit. Check in before every
 playbook run and every commit.
 **Supersedes:** the per-host WUD topology in
@@ -346,7 +346,13 @@ are silently absent. Options: (a) add a GitHub PAT (`read:packages` is enough)
 to inventory as `wud_lscr_username`/`wud_lscr_token` and template
 `WUD_REGISTRY_LSCR_LINUXSERVER_*`; (b) switch those five images to their
 `ghcr.io/linuxserver/*` mirrors (same images, GHCR public — no token) as part
-of the §6.3 pinning pass. Decision pending.
+of the §6.3 pinning pass.
+
+**RESOLVED 2026-08-24 with (a):** a 1-year GitHub PAT (expires ~2027-08-24 —
+**calendar it**; when it lapses the five linuxserver containers silently drop
+out of WUD again) lives in inventory `all.vars` as `wud_lscr_username`/
+`wud_lscr_token`; `wud.yml.j2` templates the registry when the token is
+defined. Verified: registry `lscr.linuxserver` loaded, media watcher **12/12**.
 
 ## 7. What this plan does not do
 - Pin the fleet's `:latest` tags, add `service_pull_policy`, or update any

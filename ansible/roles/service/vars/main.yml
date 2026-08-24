@@ -39,3 +39,6 @@ service_wud_tls_key_path: "{{ service_wud_tls_dir }}/key.pem"
 service_wud_tls_root_path: "{{ hostvars['localhost'].registry | registry_get('root_ca_cert') }}"
 service_wud_tls_ca_url: "{{ step_ca_url | default('SHOULD_NOT_BE_HERE') }}"
 service_wud_tls_provisioner_password: "{{ step_ca_provisioner_password | default('SHOULD_NOT_BE_HERE') }}"
+# Where the client leaf lands on the host running WUD, and inside its container
+service_wud_tls_host_dir: "{{ service_infra_services.wud.config.data_volume | default('') }}/tls"
+service_wud_tls_container_dir: "/wud/tls"

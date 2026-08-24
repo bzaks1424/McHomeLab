@@ -1,7 +1,7 @@
 # RESEARCH: WUD single instance + remote Docker watchers over mTLS
 
 **Date:** 2026-08-24
-**Status:** IN PROGRESS — steps 1–3 executed 2026-08-24 (see §3); steps 4–7 pending. Steps below are small,
+**Status:** IN PROGRESS — steps 1–3 and 5 executed, step 4 skipped by decision (2026-08-24); step 6 (docs/commit) and 7 (HA card) pending. Open: LSCR registry token (§6.4). Steps below are small,
 each independently verifiable, each its own commit. Check in before every
 playbook run and every commit.
 **Supersedes:** the per-host WUD topology in
@@ -89,7 +89,7 @@ such bounce, after which every later restart (TLS rollout, cert rotation,
 Docker upgrades) leaves containers running. Doing both in one restart saves
 nothing and mixes two changes.
 
-**D4 — HA device shape: one device, id `wud`, name "WUD" (decided).** One WUD instance means one MQTT device (`wud` /
+**D4 — HA device shape: one device, id `wud` (decided).** *Correction 2026-08-24:* `HASS_DEVICEID`/`HASS_DEVICENAME` are post-8.3.1 additions; setting them makes 8.3.1 reject the MQTT trigger outright (it never registered on the first deploy either — nothing reached HA before this was fixed). The 8.3.1 default device id is `wud`; the display name is whatever WUD 8.3.1 defaults to, not "WUD". One WUD instance means one MQTT device (`wud` /
 "WUD") with per-watcher `local|media|unifi` count + connectivity sensors,
 not the three devices STRATEGY §6.2 expects. Note for the HA workspace.
 
@@ -196,7 +196,17 @@ consumer.
   **Until step 4 lands, 2376 answers to any lab-CA cert holder who can
   reach the DMZ IPs.**
 
-### Step 4 — Firewall: 2376 reachable from util only
+### Step 4 — Firewall: 2376 reachable from util only — **SKIPPED (user decision 2026-08-24)**
+> mTLS is accepted as the sole boundary. Recon done via unifly before the
+> decision, recorded so nobody re-derives it: Internal → Dmz and Vpn → Dmz are
+> *Allow All* by default, so every Internal host (MGMT-V/MGMT-P/GENNET/EDGERISK,
+> incl. the Synology at 192.168.255.2) and every VPN client can reach 2376 and
+> is gated only by the lab-CA client-cert check; Dmz → Dmz, External/IoT/Hotspot
+> → Dmz are already blocked. If this is ever revisited, the rules are: Internal→Dmz
+> allow `192.168.254.3 → tcp/2376` above a block `tcp/2376`; Vpn→Dmz block
+> `tcp/2376`. unifly's `create -F` filter spec is single-kind per endpoint
+> (ip_address / port / network) with no protocol field — doable, or use the UI.
+
 - **Change:** UniFi rule(s) via `unifly`: allow `192.168.254.3 → DMZ:2376`;
   deny any other source to `DMZ:2376` (including DMZ-internal — media and
   unifi must not reach each other's daemon). Record rule ids in this file.
@@ -221,6 +231,18 @@ consumer.
   anywhere in the UI.
 - **Rollback:** drop `remote_watchers` from inventory → WUD is local-only again.
 - **Commit:** "service role: WUD remote watchers over mTLS".
+- **EXECUTED 2026-08-24** (two runs: the second dropped the unsupported
+  `HASS_DEVICEID/DEVICENAME`, see D4). Verified: three watchers registered
+  (`local` socket, `media` and `unifi` over `tcp://…:2376` with the client leaf);
+  media untouched, unifi's traefik recreated once for its `wud.watch=true`
+  label; `unifi` watcher sees exactly `compose-traefik-1` (no `unms`/`ucrm`);
+  MQTT trigger registered and HA discovery populated **30 entities on one
+  device `wud`**: per-watcher `*_running` connectivity + `*_update_status`
+  binary_sensors, `*_total_count`/`*_update_count` sensors, and one
+  `update.wud_<watcher>_<container>` entity per container (STRATEGY §5 was
+  right about `update` entities). Snapshot: 14 containers, 6 updates available.
+  Client leaf lives at util:`/opt/containers/wud/tls/` (0600 root), mounted
+  read-only; a changed leaf restarts only `wud` (handler).
 
 ### Step 6 — Retire Diun (D5), homepage, docs
 - `remove_orphans: true` in the deploy task (or the one-off), `services.diun`
@@ -314,6 +336,17 @@ and the tripwire covers the gap.
 3. Both need per-container labels. Infra templates (traefik/gluetun/wud) can
    carry them directly; regular services need the generic `labels:` passthrough
    in `docker-compose.yml.j2` that RESEARCH_DIUN.md §3.2 already called for.
+
+### 6.4 LSCR (linuxserver.io) images are invisible to WUD until a token exists
+WUD 8.3.1 (and `main`) ship public registries for Hub/GHCR/Quay/GCR/ECR/Codeberg/
+Forgejo but **not LSCR** — `WUD_REGISTRY_LSCR_<NAME>_USERNAME` + `_TOKEN` (a
+GitHub PAT) are required. Effect today: the media watcher reports **7 of 12**
+containers; bazarr, plex, prowlarr, radarr and sonarr (`lscr.io/linuxserver/*`)
+are silently absent. Options: (a) add a GitHub PAT (`read:packages` is enough)
+to inventory as `wud_lscr_username`/`wud_lscr_token` and template
+`WUD_REGISTRY_LSCR_LINUXSERVER_*`; (b) switch those five images to their
+`ghcr.io/linuxserver/*` mirrors (same images, GHCR public — no token) as part
+of the §6.3 pinning pass. Decision pending.
 
 ## 7. What this plan does not do
 - Pin the fleet's `:latest` tags, add `service_pull_policy`, or update any

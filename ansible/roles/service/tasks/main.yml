@@ -65,6 +65,29 @@
         step_ca_cert_provisioner_password: "{{ service_wud_tls_provisioner_password }}"
         step_ca_cert_duration: "{{ service_wud_cert_duration }}"
         step_ca_cert_renewal_threshold: "{{ service_wud_cert_renewal_threshold }}"
+    # Step 5: deliver to the host. WUD reads the files at startup, so a
+    # changed leaf (rotation) restarts only the wud container via the handler.
+    - name: "Ensure WUD TLS directory exists"
+      ansible.builtin.file:
+        path: "{{ service_wud_tls_host_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+    - name: "Deliver WUD client TLS material"
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ service_wud_tls_host_dir }}/{{ item.name }}"
+        owner: root
+        group: root
+        mode: "0600"
+      loop:
+        - { name: "ca.pem", src: "{{ service_wud_tls_root_path }}" }
+        - { name: "cert.pem", src: "{{ service_wud_tls_cert_path }}" }
+        - { name: "key.pem", src: "{{ service_wud_tls_key_path }}" }
+      loop_control:
+        label: "{{ item.name }}"
+      notify: "Restart wud"
 
 - name: "Template docker-compose.yml"
   ansible.builtin.template:

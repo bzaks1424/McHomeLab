@@ -1,0 +1,6 @@
+---
+- name: "Restart wud"
+  community.docker.docker_compose_v2:
+    project_src: "{{ service_dir }}"
+    services: ["wud"]
+    state: restarted

@@ -1,30 +1,49 @@
-{# WUD (What's Up Docker) infrastructure service template — per-host image  #}
-{# update notifier. Watches the LOCAL docker socket only (one instance per  #}
-{# docker host; never expose dockerd on TCP). Publishes to HA over MQTT.    #}
-{# NOTIFY-ONLY: no WUD_TRIGGER_DOCKER_* variable is ever templated here.    #}
+{# WUD (What's Up Docker) infrastructure service template — image update      #}
+{# notifier. One instance: a LOCAL watcher on this host's socket plus optional #}
+{# REMOTE watchers over dockerd TCP + mTLS (config.remote_watchers), using the #}
+{# client leaf the service role issues from step-ca. Publishes to HA over MQTT. #}
+{# NOTIFY-ONLY: no WUD_TRIGGER_DOCKER_* variable is ever templated here.       #}
 {% set wud = service_infra_services.wud %}
 {% set config = wud.config %}
 {% set fqdn = (config.dns_name | default('wud')) ~ '.' ~ ansible_host %}
+{% set cron = config.cron | default('0 */6 * * *') %}
+{% set remotes = config.remote_watchers | default([]) %}
   wud:
     image: {{ wud_image }}
     restart: {{ wud.restart | default('unless-stopped') }}
     environment:
       TZ: "{{ config.tz | default('America/Chicago') }}"
-      WUD_WATCHER_LOCAL_CRON: "{{ config.cron | default('0 */6 * * *') }}"
+      WUD_WATCHER_LOCAL_CRON: "{{ cron }}"
 {% if config.watch_by_default is defined %}
       WUD_WATCHER_LOCAL_WATCHBYDEFAULT: "{{ config.watch_by_default | string | lower }}"
 {% endif %}
+{% for r in remotes %}
+{% set n = r.name | upper %}
+      WUD_WATCHER_{{ n }}_HOST: "{{ r.host }}"
+      WUD_WATCHER_{{ n }}_PORT: "{{ r.port | default(2376) }}"
+      WUD_WATCHER_{{ n }}_CRON: "{{ r.cron | default(cron) }}"
+      WUD_WATCHER_{{ n }}_CAFILE: "{{ service_wud_tls_container_dir }}/ca.pem"
+      WUD_WATCHER_{{ n }}_CERTFILE: "{{ service_wud_tls_container_dir }}/cert.pem"
+      WUD_WATCHER_{{ n }}_KEYFILE: "{{ service_wud_tls_container_dir }}/key.pem"
+{% if r.watch_by_default is defined %}
+      WUD_WATCHER_{{ n }}_WATCHBYDEFAULT: "{{ r.watch_by_default | string | lower }}"
+{% endif %}
+{% endfor %}
       WUD_TRIGGER_MQTT_HA_URL: "{{ wud_mqtt_url }}"
       WUD_TRIGGER_MQTT_HA_USER: "{{ wud_mqtt_user }}"
       WUD_TRIGGER_MQTT_HA_PASSWORD: "{{ wud_mqtt_password }}"
       WUD_TRIGGER_MQTT_HA_HASS_ENABLED: "true"
       WUD_TRIGGER_MQTT_HA_HASS_DISCOVERY: "true"
-      WUD_TRIGGER_MQTT_HA_HASS_DEVICEID: "wud_{{ inventory_hostname }}"
-      WUD_TRIGGER_MQTT_HA_HASS_DEVICENAME: "WUD {{ inventory_hostname }}"
-      WUD_TRIGGER_MQTT_HA_TOPIC: "wud/{{ inventory_hostname }}"
+{# HASS_DEVICEID/DEVICENAME exist only after 8.3.1 (verified: 8.3.1 rejects   #}
+{# them and the whole MQTT trigger fails to register). 8.3.1's device id is  #}
+{# the default "wud" — which is what we want anyway (plan D4).               #}
+      WUD_TRIGGER_MQTT_HA_TOPIC: "{{ config.mqtt_topic | default('wud') }}"
     volumes:
       - "{{ config.data_volume }}:/store"
       - "{{ service_docker_socket }}:{{ service_docker_socket }}:ro"
+{% if remotes | length > 0 %}
+      - "{{ service_wud_tls_host_dir }}:{{ service_wud_tls_container_dir }}:ro"
+{% endif %}
     labels:
       - "wud.watch=true"
       - "traefik.enable=true"

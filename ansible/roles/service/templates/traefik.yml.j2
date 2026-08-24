@@ -46,9 +46,10 @@
 {% if config.external_routes is defined %}
       - "{{ service_dir }}/traefik-external.yml:/etc/traefik/dynamic/external.yml:ro"
 {% endif %}
-{# Opt traefik in to WUD only where the watcher is opt-in (WATCHBYDEFAULT=false); #}
-{# elsewhere the label is redundant and would only force a traefik recreate.     #}
-{% if 'wud' in service_infra_services and not (service_infra_services.wud.config.watch_by_default | default(true)) %}
+{# Opt traefik in to WUD explicitly (config.wud_watch) — needed where the WUD   #}
+{# watcher for this host runs opt-in (WATCHBYDEFAULT=false), e.g. unifi, whose #}
+{# dockerd also hosts Ubiquiti's unms project that must stay unwatched.        #}
+{% if config.wud_watch | default(false) %}
     labels:
       - "wud.watch=true"
 {% endif %}

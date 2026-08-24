@@ -34,6 +34,30 @@
     append: true
     state: present
   register: docker_user
+- name: "Ensure docker unit override directory exists"
+  ansible.builtin.file:
+    path: "{{ docker_unit_override_dir }}"
+    state: directory
+    mode: "{{ docker_keyring_dir_mode_default }}"
+- name: "Template docker unit override (socket config moves to daemon.json)"
+  ansible.builtin.template:
+    src: override.conf.j2
+    dest: "{{ docker_unit_override_path }}"
+    mode: "{{ docker_file_mode_default }}"
+  notify:
+    - "Reload systemd units"
+    - "Restart docker"
+- name: "Template docker daemon.json"
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: "{{ docker_daemon_json_path }}"
+    mode: "{{ docker_file_mode_default }}"
+  notify: "Restart docker"
+# Restart now (not at end of play) so the compose deploy that follows sees
+# the configured daemon. With live-restore already on, this is container-safe;
+# the first time it runs, every container on the host restarts once.
+- name: "Apply docker daemon configuration"
+  ansible.builtin.meta: flush_handlers
 - name: "Refresh the SSH session to apply new group membership"
   ansible.builtin.meta: refresh_inventory
   # ansible.builtin.meta: reset_connection

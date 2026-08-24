@@ -9,3 +9,18 @@ docker_packages:
   - containerd.io
   - docker-buildx-plugin
   - docker-compose-plugin
+# --- daemon configuration (Step 1 of research/RESEARCH_WUD_MTLS.md) ---
+# Rendered to /etc/docker/daemon.json. "hosts" lives here (not on the unit's
+# ExecStart) so a TCP listener can be added later without the "specified both
+# as a flag and in the configuration file" refusal. live-restore keeps
+# containers running across dockerd restarts (TLS rollout, cert rotation,
+# package upgrades) — enabling it costs exactly one restart.
+docker_daemon_config:
+  hosts:
+    - "fd://"
+  live-restore: true
+docker_daemon_json_path: "/etc/docker/daemon.json"
+docker_unit_override_dir: "/etc/systemd/system/docker.service.d"
+docker_unit_override_path: "/etc/systemd/system/docker.service.d/override.conf"
+docker_dockerd_bin: "/usr/bin/dockerd"
+docker_containerd_sock: "/run/containerd/containerd.sock"

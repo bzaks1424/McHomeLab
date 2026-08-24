@@ -1,0 +1,6 @@
+# Managed by Ansible (roles/docker) — do not edit manually.
+# Clears the packaged "-H fd://" so daemon socket(s) are governed by
+# {{ docker_daemon_json_path }} ("hosts"), where a TLS listener can be added.
+[Service]
+ExecStart=
+ExecStart={{ docker_dockerd_bin }} --containerd={{ docker_containerd_sock }}

@@ -377,6 +377,17 @@ defined. Verified: registry `lscr.linuxserver` loaded, media watcher **12/12**.
   `nbxyz24`). Fix per WUD docs: `wud.tag.transform` normalising to
   `major.minor.patch-<build>` on the five linuxserver images and netbootxyz.
 
+### 6.6 Backlog drained — 2026-08-24 (STRATEGY §7 item 5), minors only
+Grouped by tech then host, one full site.yml each, verified between:
+1. traefik `v3.6.12 → v3.7.11` fleet-wide (3 hosts; all step-ca routes 200, unms passthrough OK).
+2. util: step-ca `0.29.0 → 0.30.2` (issuance re-proven with a throwaway cert), netbootxyz `nbxyz10 → nbxyz24` (menu files byte-identical; init added Secure Boot binaries only).
+3. media A: gluetun `v3.41.1 → v3.41.3`, plex `…ls294 → 1.43.3…ls321`, radarr `6.0.4 → 6.3.0`, sonarr `4.0.17 → 4.0.19`, prowlarr `2.3.0 → 2.5.2`, bazarr `v1.5.6 → v1.6.0` (≈4 min one-time DB upgrade, then healthy), cross-seed `6.13.6 → 6.13.7`. tun0 + port 60914 intact throughout.
+4. media B: qbit-manage `v4.7.0 → v4.12.0` **before** qBittorrent, because 4.8.0 fixed remove-unregistered on qBt 5.2+; first run clean (3m27s).
+5. media C: qBittorrent `release-5.1.3.10 → release-5.2.3.10`; API v5.2.3, 1999 torrents / 1473 seeding before and after, tun0.
+Majors (homepage v2, recyclarr v8) → `research/MIGRATION_PLANS.md`, together
+with the gluetun-namespace DNS finding (bazarr + recyclarr configs use service
+names that cannot resolve there; both have been failing every sync for a week+).
+
 ## 7. What this plan does not do
 - Pin the fleet's `:latest` tags, add `service_pull_policy`, or update any
   container (STRATEGY §6.3/§7 — later).

@@ -9,8 +9,18 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 TOOL="$ROOT/scripts/mhl-vault-file"; GATE="$ROOT/scripts/mhl-no-secrets"
-[ -x "$ROOT/.venv/bin/ansible-vault" ] && [ -r "$HOME/.mhl/vault/mhl.pass" ] || { echo "skip  secrets matrix (needs venv + vault password)"; exit 0; }
-T=$(mktemp -d "${TMPDIR:-/tmp}/mhl-matrix.XXXXXX"); trap 'rm -r "$T"; rm -f "$HOME"/.mhl/pre-vault/matrix-*.pre-vault "$HOME"/.mhl/pre-vault/matrix-*.pre-vault.meta' EXIT
+if ! [ -x "$ROOT/.venv/bin/ansible-vault" ] || ! [ -r "$HOME/.mhl/vault/mhl.pass" ]; then
+  # Visible skip: exit 3 so `make validate` reports it as SKIPPED, not green.
+  echo "SKIP  secrets matrix: needs the venv and the vault password (CI has a shim; a dev box must have both)"; exit 3
+fi
+# Sandboxed HOME for the tool's backups: the suite must never touch the real ~/.mhl/pre-vault.
+T=$(mktemp -d "${TMPDIR:-/tmp}/mhl-matrix.XXXXXX"); SH=$(mktemp -d "${TMPDIR:-/tmp}/mhl-matrix-home.XXXXXX"); trap 'rm -r "$T" "$SH"' EXIT
+# The sandbox HOME lives OUTSIDE the scanned tree: the tool's *.pre-vault backups
+# land there, and the gate would (correctly) fail on them if they were inside $T.
+mkdir -p "$SH/.mhl/vault" "$SH/.mhl/bin"; chmod 700 "$SH/.mhl/vault"
+cp "$HOME/.mhl/vault/mhl.pass" "$SH/.mhl/vault/mhl.pass"; chmod 600 "$SH/.mhl/vault/mhl.pass"
+cp "$HOME/.mhl/bin/mhl-vault-client" "$SH/.mhl/bin/mhl-vault-client" 2>/dev/null || cp "$ROOT/scripts/mhl-vault-client" "$SH/.mhl/bin/mhl-vault-client"; chmod 700 "$SH/.mhl/bin/mhl-vault-client"
+export HOME="$SH"
 PASS=0; FAIL=0
 row() { # name expected_gate(PASS|FAIL) expected_tool(vault|skip|refuse) content
   local name="$1"; local eg="$2"; local et="$3"; local f="$T/matrix-$name.yml"
@@ -26,20 +36,31 @@ row() { # name expected_gate(PASS|FAIL) expected_tool(vault|skip|refuse) content
   [ "$g" = FAIL ] && [ "$t" = skip ] && ok=0                     # the deadlock cell
   [ "$g" = PASS ] && [ "$t" = vault ] && ok=0                    # tool vaulted what the gate did not flag
   [ "$t" = vault ] && [ "$g2" = FAIL ] && ok=0                    # vaulted but gate still red
-  [ "$t" = refuse ] && ! grep -q 'cannot be vaulted\|refusing\|not valid YAML\|not supported' "$T/err" && ok=0   # refusal must explain
+  # A refusal must be one of the tool's explicit refuse messages, each of which carries a remedy or reason.
+  [ "$t" = refuse ] && ! grep -qE 'cannot be vaulted by this tool — |: not valid YAML \(line [0-9]+\); refusing|YAML documents; exactly one is supported|is not UTF-8; refusing|has CRLF line endings' "$T/err" && ok=0
   grep -q 'CANARY' "$T/out" "$T/err" && ok=0                      # never print a value
   if [ $ok -eq 1 ]; then PASS=$((PASS+1)); echo "ok    $name: gate=$g tool=$t after=$g2"; else FAIL=$((FAIL+1)); echo "FAIL  $name: gate=$g tool=$t after=$g2 (want gate=$eg tool=$et)"; fi
   rm -f "$f" "$f.orig"
 }
 row plain           FAIL vault  '---\na_password: CANARY1\n'
 row quoted          FAIL vault  '---\na_password: "CANARY#2"  # keep\n'
-row leadingzero     FAIL vault  '---\na_password: 004821\n'
+row leadingzero     FAIL vault  '---\na_password: 004821\nb_password: CANARY0\n'
 row listitem        FAIL vault  '---\nitems:\n  - a_password: CANARY3\n'
 row vaulted         PASS skip   '---\na_password: !vault |\n  $ANSIBLE_VAULT;1.2;AES256;mhl\n  00\n'
 row ref             PASS skip   '---\na_password: "{{ x }}"\n'
 row empty           PASS skip   '---\na_password:\n'
 row collection      PASS skip   '---\ncredentials:\n  user: bob\n'
-row blockscalar_txt PASS skip   '---\nmotd: |\n  hi\n  password: CANARY4\n  bye\n'
+row blockscalar_txt PASS skip   '---\nmotd: |  # no-secret: login banner prose\n  hi\n  password: CANARY4\n  bye\n'
+row embedded_cred   FAIL refuse '---\nmariadb_compose: |\n  services:\n    db:\n      environment:\n        MYSQL_ROOT_PASSWORD: CANARY14\n'
+row embedded_folded FAIL refuse '---\nsmb_conf: >\n  [global]\n  password: CANARY15\n'
+row flowseq_value   FAIL refuse '---\nunifi_api_key: [CANARY16, CANARY17]\n'
+row flowmap_value   FAIL refuse '---\nplex_token: {value: CANARY18}\n'
+row block_collection PASS skip  '---\ncredentials:\n  - user: bob\n'
+row nextline_quoted FAIL refuse '---\ndb_password:\n  "CANARY19"\n'
+row nextline_plain  FAIL refuse '---\ndb_password:\n  CANARY20\n'
+row duplicate_keys  FAIL vault  '---\nh1:\n  a_password: CANARY21\nh2:\n  a_password: CANARY22\n'
+row crlf            FAIL refuse '---\r\na_password: CANARY23\r\n'
+row nonutf8         FAIL refuse '---\na_password: CANARY24\xff\n'
 row blockscalar     FAIL refuse '---\na_password: |\n  CANARY5\n'
 row folded          FAIL refuse '---\na_password: >-\n  CANARY6\n'
 row flow            FAIL refuse 'creds: {\n  password: CANARY7,\n  user: bob\n}\n'
@@ -64,6 +85,8 @@ done
 ( cd "$ROOT" && scripts/mhl-no-secrets "$T" >/dev/null 2>&1 ) && { PASS=$((PASS+1)); echo "ok    gate relative path"; } || { FAIL=$((FAIL+1)); echo "FAIL  gate relative"; }
 ln -s "$GATE" "$T/gate-link"; ( cd /tmp && "$T/gate-link" "$T" >/dev/null 2>&1 ) && { PASS=$((PASS+1)); echo "ok    gate via symlink"; } || { FAIL=$((FAIL+1)); echo "FAIL  gate via symlink"; }; rm -f "$T/gate-link"
 ( cd "$ROOT" && scripts/mhl-no-secrets >/dev/null 2>&1; [ $? -ne 2 ] ) && { PASS=$((PASS+1)); echo "ok    gate no-args runs"; } || { FAIL=$((FAIL+1)); echo "FAIL  gate no-args"; }
+( "$GATE" /nonexistent-dir >/dev/null 2>&1; [ $? -eq 1 ] ) && { PASS=$((PASS+1)); echo "ok    gate FAILs on a typo'd path"; } || { FAIL=$((FAIL+1)); echo "FAIL  gate passed a nonexistent dir"; }
+( "$GATE" --help >/dev/null 2>&1; [ $? -eq 2 ] ) && { PASS=$((PASS+1)); echo "ok    gate rejects --help as usage"; } || { FAIL=$((FAIL+1)); echo "FAIL  gate treated --help as a dir"; }
 R3=$(mktemp -d "${TMPDIR:-/tmp}/mhl-gatecopy.XXXXXX"); mkdir -p "$R3/scripts"; cp "$GATE" "$ROOT/scripts/mhl_secrets.py" "$R3/scripts/"; ln -s "$ROOT/.venv" "$R3/.venv"
 ( "$R3/scripts/mhl-no-secrets" "$T" >/dev/null 2>&1 ) && { PASS=$((PASS+1)); echo "ok    gate works with mhl-vault-file absent"; } || { FAIL=$((FAIL+1)); echo "FAIL  gate with tool absent"; }; rm -r "$R3"
 echo "MATRIX: $PASS passed, $FAIL failed"; [ $FAIL -eq 0 ]

@@ -36,8 +36,11 @@ KEY_RE = re.compile(r"^(?:[A-Za-z0-9._]*_)?(?i:" + SECRET_WORDS + r")$")
 # sync with the table above: it flags a secret-named key with a non-!vault,
 # non-{{ }}, non-empty, non-comment value.
 LINE_RE = re.compile(r"^[ \t-]*(?:[A-Za-z0-9._]*_)?(?i:" + SECRET_WORDS + r")[ \t]*:[ \t]*(?!(!vault|\{\{|\"\{\{|'\{\{|$|#))\S")
-GATE_FAILS = {"plain", "block_scalar", "multiline", "flow", "tag", "alias", "complex_key", "empty_quoted"}
-TOOL_REFUSES = {"block_scalar", "multiline", "flow", "tag", "alias", "complex_key", "empty_quoted"}
+#   embedded       FAIL   refuse (exit 1, remedy)   a secret-shaped LINE inside any block scalar's content
+#   next_line      FAIL   refuse (exit 1, remedy)   quoted value starting on the line after the key
+#   flow (coll.)   FAIL   refuse (exit 1, remedy)   a secret-named key HOLDING a flow collection [..]/{..}
+GATE_FAILS = {"plain", "block_scalar", "multiline", "flow", "tag", "alias", "complex_key", "empty_quoted", "embedded", "next_line"}
+TOOL_REFUSES = {"block_scalar", "multiline", "flow", "tag", "alias", "complex_key", "empty_quoted", "embedded", "next_line"}
 
 
 class Finding:
@@ -77,12 +80,23 @@ def walk(node, path=()):
 
 
 def classify(text, tree):
-    """Ordered Findings for every secret-named key in the tree."""
+    """Ordered Findings for every secret-named key in the tree, plus `embedded`
+    findings for secret-shaped LINES inside any block scalar's content (a
+    compose file or smb.conf pasted as a literal block is the likeliest place
+    for a real credential to hide). `motd: |`-style prose is waived with a
+    `# no-secret:` marker on the key line, not by blinding the gate."""
     lines = text.split("\n")
     out = []
     for path, parent, k, v in walk(tree):
+        # Block-scalar CONTENT scan applies to every key, secret-named or not.
+        if isinstance(v, yaml.ScalarNode) and v.style in ("|", ">") and v.start_mark.line < len(lines):
+            keyline = lines[k.start_mark.line] if isinstance(k, yaml.ScalarNode) else ""
+            if "no-secret:" not in keyline:
+                for i in range(v.start_mark.line + 1, min(v.end_mark.line + 1, len(lines))):
+                    if LINE_RE.match(lines[i]):
+                        kname = k.value if isinstance(k, yaml.ScalarNode) else "<complex-key>"
+                        out.append(Finding(path, f"{kname} (block content: {lines[i].strip().split(':')[0].strip(' -')})", i + 1, "embedded", k, v))
         if not isinstance(k, yaml.ScalarNode):
-            # complex key: flag if the complex key itself names a secret anywhere
             continue
         if not KEY_RE.match(k.value):
             continue
@@ -91,13 +105,17 @@ def classify(text, tree):
         if parent.flow_style:
             out.append(f("flow")); continue
         if isinstance(v, (yaml.MappingNode, yaml.SequenceNode)):
-            out.append(f("collection")); continue
+            # block collection under a secret-named key (e.g. `credentials:` block) is fine;
+            # a FLOW collection holding the secret ([..] / {..}) is not.
+            out.append(f("flow" if v.flow_style else "collection")); continue
         if not isinstance(v, yaml.ScalarNode):
             out.append(f("alias")); continue
         # explicit `? key` form: the key node starts at a '?' in the source
         kl = lines[k.start_mark.line] if k.start_mark.line < len(lines) else ""
-        if kl[:k.start_mark.column].rstrip().endswith("?") or v.start_mark.line != k.start_mark.line and v.style not in ("|", ">", '"', "'"):
+        if kl[:k.start_mark.column].rstrip().endswith("?"):
             out.append(f("complex_key")); continue
+        if v.start_mark.line != k.start_mark.line and v.style not in ("|", ">"):
+            out.append(f("next_line")); continue
         if v.tag == "!vault":
             out.append(f("vaulted")); continue
         raw = lines[v.start_mark.line][v.start_mark.column:v.end_mark.column] if v.start_mark.line == v.end_mark.line else lines[v.start_mark.line][v.start_mark.column:]

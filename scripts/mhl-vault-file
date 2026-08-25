@@ -61,7 +61,7 @@ import sys
 import tempfile
 import time
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))  # symlink-safe, like the gate
 ANSIBLE_DIR = os.path.join(ROOT, "ansible")
 VENV = os.path.join(ROOT, ".venv")
 VENV_PY = os.path.join(VENV, "bin", "python3")
@@ -158,7 +158,10 @@ REMEDY = {
     "alias": "replace the alias/anchor with a literal value",
     "complex_key": "use a plain `key: value` line",
     "empty_quoted": "set a value or remove the key (ansible-vault refuses empty input)",
+    "embedded": "a credential-shaped line sits inside a block scalar: move it to its own key (then vault it) or, if it is prose, mark the block's key line with `# no-secret: <why>`",
+    "next_line": "put the quoted value on the same line as the key",
 }
+COERCIBLE = re.compile(r"^(0[0-7]+|0x[0-9a-fA-F]+|0b[01]+|[0-9][0-9_]*|[0-9]*\.[0-9]+|[+-]?[0-9]+(\.[0-9]*)?([eE][+-]?[0-9]+)?|yes|no|on|off|true|false|null|~|y|n|\.inf|\.nan|[0-9]{4}-[0-9]{2}-[0-9]{2}.*|[0-9]+:[0-9]+(:[0-9]+)?)$", re.I)
 
 
 def secret_leaves(tree, key_re, text):
@@ -170,6 +173,12 @@ def secret_leaves(tree, key_re, text):
         if f.cls in mhl_secrets.TOOL_REFUSES:
             die(f"line {f.line}: '{f.key}' [{f.cls}] cannot be vaulted by this tool — {REMEDY[f.cls]}")
         if f.cls == "plain":
+            if f.value_node.style is None and COERCIBLE.match(f.value_node.value):
+                # BaseLoader keeps the source text; Ansible's loader would have typed this
+                # unquoted value (e.g. 004821 -> 4821). After vaulting the consumer sees the
+                # STRING exactly as written — almost certainly right, but a behaviour change.
+                print(f"note: line {f.line}: '{f.key}' is an unquoted value that YAML would have typed "
+                      f"(int/float/bool/null/date); after vaulting it is delivered as the literal string", file=sys.stderr)
             out.append((f.path, f.key_node, f.value_node))
     return out
 
@@ -222,7 +231,7 @@ def backup_dir_ok():
     entries = []
     for f in sorted(os.listdir(BACKUP_DIR)):
         p = os.path.join(BACKUP_DIR, f)
-        if f.endswith(".meta") or f.endswith(".lock"):
+        if f.endswith(".meta") or f.endswith(".lock") or f.endswith(".removing"):
             continue
         if os.path.islink(p) or not os.path.isfile(p):
             die(f"{p}: not a regular file (symlink or other) — refusing to touch the backup dir")
@@ -309,48 +318,55 @@ def cmd_purge(args):
             expected = [(p, k.value, v.value) for p, k, v in secret_leaves(bak_tree, key_re, read_text(b))]
             if not expected:
                 die(f"{os.path.basename(b)}: contains no plaintext secret values — refusing; inspect by hand")
-            # positional pairing on the SAME basis both sides: document order, per key name
-            by_key_inv, by_key_bak = {}, {}
-            for _, k, body in inv:
-                by_key_inv.setdefault(k, []).append(body)
-            for _, k, v in expected:
-                by_key_bak.setdefault(k, []).append(v)
+            # Pair by NODE PATH: the backup is the same document, so every plaintext
+            # leaf at path P must be a !vault leaf at exactly path P in the inventory.
+            # (Name-scoped counting would false-refuse when a pre-existing !vault
+            # shares the key name elsewhere in the file.)
+            inv_by_path = {}
+            for p, k, body in inv:
+                if p in inv_by_path:
+                    die(f"{f}: duplicate node path {'/'.join(map(str, p))} — refusing")
+                inv_by_path[p] = (k, body)
             pairs = []
-            for k, vals in by_key_bak.items():
-                ivs = by_key_inv.get(k, [])
-                if len(ivs) != len(vals):
-                    die(f"{os.path.basename(b)}: key '{k}' occurs {len(vals)}x in the backup but {len(ivs)}x as !vault in {f} — refusing")
-                for n, (plain, body) in enumerate(zip(vals, ivs), 1):
-                    dec = decrypt(body)
-                    if dec is None:
-                        die(f"{f}: '{k}' occurrence {n} does not decrypt under the current vault password — refusing (rotated? re-vault first)")
-                    if not hmac.compare_digest(plain.encode("utf-8"), dec.encode("utf-8")):
-                        die(f"{os.path.basename(b)}: '{k}' occurrence {n} does NOT match {f} — refusing; the inventory may hold a corrupted or mis-bound secret")
-                    del dec
-                    pairs.append((k, n)); verified += 1
-            del expected, by_key_bak
+            for p, k, plain in expected:
+                if p not in inv_by_path:
+                    die(f"{os.path.basename(b)}: '{k}' at {'/'.join(map(str, p))} has no !vault value at that path in {f} — refusing")
+                body = inv_by_path[p][1]
+                dec = decrypt(body)
+                if dec is None:
+                    die(f"{f}: '{k}' at {'/'.join(map(str, p))} does not decrypt under the current vault password — refusing (rotated? re-vault first)")
+                if not hmac.compare_digest(plain.encode("utf-8"), dec.encode("utf-8")):
+                    die(f"{os.path.basename(b)}: '{k}' at {'/'.join(map(str, p))} does NOT match {f} — refusing; the inventory may hold a corrupted or mis-bound secret")
+                del dec
+                pairs.append((k, '/'.join(map(str, p)))); verified += 1
+            del expected
             plan.append((b, f, pairs))
         if dry:
             for b, f, pairs in plan:
-                print(f"{os.path.basename(b)} -> {f}: {', '.join(f'{k}#{n}' for k, n in pairs)}")
+                print(f"{os.path.basename(b)} -> {f}: {', '.join(f'{k}@{p}' for k, p in pairs)}")
             print(f"dry run: {verified} value(s) would be verified, {len(plan)} backup(s) would be removed; nothing changed")
             return
         removed, failed = 0, []
         for b, f, pairs in plan:
             try:
-                fd = os.open(b, os.O_RDWR | os.O_NOFOLLOW)
+                # Rename FIRST (out of the covered namespace), then overwrite, then unlink:
+                # a failure after the overwrite leaves a garbage file that no future
+                # --purge/--list will trip over, and the original name is gone either way.
+                gone = b + ".removing"
+                os.rename(b, gone)
+                fd = os.open(gone, os.O_RDWR | os.O_NOFOLLOW)
                 try:
                     os.write(fd, os.urandom(os.fstat(fd).st_size)); os.fsync(fd)
                 finally:
                     os.close(fd)
-                os.unlink(b)
+                os.unlink(gone)
                 try:
                     os.unlink(b + ".meta")
                 except OSError:
                     pass
                 removed += 1
             except OSError as e:
-                failed.append(f"{os.path.basename(b)}: {e.strerror}")
+                failed.append(f"{os.path.basename(b)}: {e.strerror} (a *.removing file may remain in {BACKUP_DIR}; it is overwritten garbage, delete it by hand)")
         print(f"verified {verified} value(s) byte-for-byte; removed {removed} backup(s)")
         if failed:
             die("could not remove: " + "; ".join(failed))

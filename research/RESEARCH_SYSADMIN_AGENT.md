@@ -656,3 +656,10 @@ difference traced to the checking tooling, now Phase 3 items:
 - F4 `~/.mhl/synology/chain.pem` mode 0664 vs declared 0644 (controller-local, fixed by any run).
 - F5 stale `known_hosts` entry for alias `unifi` on the controller (from the reprovision).
 - F6 leftover `util:/opt/docker/compose/diun-watch.yml` — already on the codified-cleanup list (Q2).
+
+### 2026-08-25 — escrow confirmed (Mike)
+The recovery root is Mike's password safe: its own master password (independent
+of the `mhl` vault password), backed up to Google Drive, openable from any
+device. It holds the vault password and is where plaintext originals are
+escrowed before `mhl-vault-file --purge`. Vault password rotation: **hold**
+(no public exposure found; reviewer-reported transcript exposure unverified).

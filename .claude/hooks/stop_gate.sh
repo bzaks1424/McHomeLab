@@ -26,6 +26,29 @@ fi
 for sf in "$REPO/.claude/settings.local.json" "$REPO/.claude/settings.json" "$HOME/.claude/settings.local.json" "$HOME/.claude/settings.json"; do
   [ -f "$sf" ] && jq -e '.disableAllHooks == true' "$sf" >/dev/null 2>&1 && R="$R"$'\n'"disableAllHooks is set in $sf — guards are off; remove it (rule 1)"
 done
+# Repo governance files: any dirty tracked file or untracked file at a governance
+# path must correspond to a consumed token (pre-edit hash == HEAD blob content, or
+# "none" for a new file). No log, unreadable log, or no matching entry -> block.
+GOVPATHS='^(\.claude/|CLAUDE(\.local)?\.md$|\.mcp\.json$|Makefile$|\.github/|\.yamllint$|\.ansible-lint\.yml$|scripts/(hooks|git-hooks|tests)/|scripts/(mhl-install-hooks|mhl-no-secrets|mhl_secrets\.py|mhl-vault-file|mhl-pr|mhl-manifest)$)'
+LOG="$HOME/.mhl/approvals/consumed.log"
+# .claude/hooks/*.sh are exempt: repo copies are inert until installed from main
+# (installed==repo is asserted there), and editing them freely is the design.
+gov_dirty=$(git -C "$REPO" status --porcelain --untracked-files=all 2>/dev/null | awk '{print $2}' | grep -E "$GOVPATHS" | grep -vE '^\.claude/hooks/[a-z_]+\.sh$' || true)
+if [ -n "$gov_dirty" ]; then
+  if [ ! -r "$LOG" ]; then
+    R="$R"$'\n'"governance files changed but the approval log ($LOG) is missing/unreadable — cannot attribute: $(printf '%s' "$gov_dirty" | tr '\n' ' ')"
+  else
+    unauth=""; auth=""
+    while IFS= read -r rel; do
+      [ -z "$rel" ] && continue
+      full=$(realpath -m "$REPO/$rel")
+      headhash=$(git -C "$REPO" show "HEAD:$rel" 2>/dev/null | sha256sum | cut -c1-64); [ -z "$(git -C "$REPO" ls-files --error-unmatch -- "$rel" 2>/dev/null)" ] && headhash=none
+      if grep -qF " consumed token for $full pre-edit sha256=$headhash" "$LOG"; then auth="$auth $rel"; else unauth="$unauth $rel"; fi
+    done <<< "$gov_dirty"
+    [ -n "$unauth" ] && R="$R"$'\n'"governance files changed WITHOUT a matching approval token (rule 3/8):$unauth — revert them (git checkout --) or get Mike's token and redo the edit"
+    [ -n "$auth" ] && echo "note: token-approved governance edits pending in this tree:$auth" >&2
+  fi
+fi
 # Integrity of the live enforcement set. The checker itself failing to run is a block
 # (fail closed), never a skipped check.
 if [ -x "$REPO/scripts/mhl-manifest" ]; then

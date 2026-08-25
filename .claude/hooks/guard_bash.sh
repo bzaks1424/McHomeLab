@@ -76,7 +76,8 @@ fi
 # 2c. wrapped shells / language one-liners carrying a lab host and a mutating
 # verb (bash -c, sh -c, eval, python3 -c, perl -e ...) — the wrapper hides the
 # structure, so any such combination is denied outright (review M4/M5).
-if has "${B}(bash|sh|zsh|eval|python3?|perl|ruby|node)[[:space:]]+(-c|-e|\"|')" && has "(^|[[:space:]/@\"'=:,\[(])(${HOSTS}|${NET})${TAIL}|(^|[[:space:]\"',\[(])(${HOSTS})[\"',)\]]" && has "$MUTATE"; then
+# A host name preceded by '/' is a path component (e.g. /media/Backups), not a host.
+if has "${B}(bash|sh|zsh|eval|python3?|perl|ruby|node)[[:space:]]+(-c|-e|\"|')" && has "(^|[[:space:]@\"'=:,\[(])(${HOSTS}|${NET})${TAIL}|(^|[[:space:]\"',\[(])(${HOSTS})[\"',)\]]" && has "$MUTATE"; then
   deny "rule 1: a wrapped shell/language one-liner that names a lab host and a mutating verb is denied outright — write the change as a role task instead."
 fi
 # 2b. file transfer onto a lab host (short names count here: `media:` is a target)

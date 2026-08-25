@@ -107,8 +107,8 @@ expect "outside-repo cwd: governance write denied"   $G deny  "$(bo 'echo x > /h
 expect "outside-repo cwd: installed hook write denied" $G deny "$(bo 'echo exit 0 | tee /home/mmcdonnell/.mhl/hooks/guard_bash.sh')"
 expect "outside-repo cwd: docker context prune denied" $G deny "$(bo 'docker --context media system prune -af')"
 expect "outside-repo cwd: ordinary command allowed"  $G allow "$(bo 'npm test')"
-expect "outside-repo cwd: governance path via Write denied" $W deny "$(wo "$HOME/workspace/McHomeLab/.claude/settings.local.json")"
-expect "outside-repo cwd: installed hook via Write denied"  $W deny "$(wo "$HOME/.mhl/hooks/guard_bash.sh")"
+expect "outside-repo cwd: governance path via Write denied" guard_writes.sh deny "$(wo "$HOME/workspace/McHomeLab/.claude/settings.local.json")"
+expect "outside-repo cwd: installed hook via Write denied"  guard_writes.sh deny "$(wo "$HOME/.mhl/hooks/guard_bash.sh")"
 expect "empty allowed"                           $G allow "$(b '')"
 W=guard_writes.sh
 expect "write role file allowed"                 $W allow "$(w "$HOME/workspace/McHomeLab/ansible/roles/service/tasks/main.yml")"

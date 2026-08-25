@@ -1,0 +1,12 @@
+{
+  "_comment": "Reference hook block for ~/.claude/settings.json (USER scope, Mike's decision 2026-08-25). Project scope cannot disable user-scope hooks, so this is the enforcement point. Paste the `hooks` object into ~/.claude/settings.json (merge with any existing keys). The commands point at the INSTALLED copies (~/.mhl/hooks), populated from main by scripts/mhl-install-hooks. `make hooks-installed` asserts this block is live and the installed copies match the repo.",
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "bash $HOME/.mhl/hooks/session_context.sh", "timeout": 30, "statusMessage": "Injecting lab state"}]}],
+    "PreToolUse": [
+      {"matcher": "Write|Edit|NotebookEdit", "hooks": [{"type": "command", "command": "bash $HOME/.mhl/hooks/guard_writes.sh", "timeout": 10}]},
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "bash $HOME/.mhl/hooks/guard_bash.sh", "timeout": 10}]}
+    ],
+    "PostToolUse": [{"matcher": "Write|Edit", "hooks": [{"type": "command", "command": "bash $HOME/.mhl/hooks/check_edit.sh", "timeout": 60}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "bash $HOME/.mhl/hooks/stop_gate.sh", "timeout": 400, "statusMessage": "make validate + incident + memory gate"}]}]
+  }
+}

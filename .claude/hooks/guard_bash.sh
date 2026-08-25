@@ -29,7 +29,14 @@ NET='([a-z0-9.-]+\.)?(util|media|unifi|synology|printer|vc|esxi0[0-9]|idrac|ha)\
 TAIL='([[:space:]/:"'"'"']|$)'
 # Mutating verbs INSIDE a quoted remote command (so a local `> /tmp/out` after the
 # closing quote is not a hit). We extract the quoted remote part first.
-MUTATE='docker[[:space:]]+(exec|restart|stop|start|rm|kill|compose[[:space:]]+(up|down|restart|rm|pull))|sudo[[:space:]]+(rm|mv|cp|tee|systemctl[[:space:]]+(restart|stop|start|enable|disable)|apt|chmod|chown)|[^<>|]>>?[[:space:]]*/|sed[[:space:]]+-i|apt(-get)?[[:space:]]+(install|remove|purge|upgrade)|(^|[[:space:];&|])rm[[:space:]]|systemctl[[:space:]]+(restart|stop|start)'
+# Every verb is anchored on the same boundary class as B (quotes included) so a
+# verb at position 0 of a quoted remote command, or after && ; | is matched.
+# A read-prefixed remote command that chains into any of these is denied too.
+MV='(^|[[:space:];&|(`"'"'"'=])'
+DOCKER_VERBS='exec|restart|stop|start|rm|rmi|kill|run|create|cp|build|update|load|import|commit|pause|unpause|rename|tag|push|(image|system|container|volume|network|builder)[[:space:]]+(prune|rm|remove|create)|compose([[:space:]]+-[-a-z]+[[:space:]]+[^[:space:]]+)*[[:space:]]+(up|down|restart|rm|pull|build|create|kill|stop|start|exec|run)'
+SIMPLE_VERBS='rm|mv|cp|tee|dd|chmod|chown|chgrp|truncate|install|ln|touch|mkdir|rmdir|shred|reboot|shutdown|poweroff|halt|kill|pkill|killall|crontab|useradd|usermod|userdel|passwd|mount|umount|swapoff|swapon|ip|iptables|nft|ufw|patch|rsync|scp|make|python3?|bash|sh|eval|source|sed[[:space:]]+(-i|--in-place)|perl[[:space:]]+-pi|git[[:space:]]+(checkout|reset|clean|pull|push|commit)'
+END='([[:space:];&|"'"'"')]|$)'
+MUTATE="${MV}(sudo[[:space:]]+)?((docker[[:space:]]+([-a-z]+[[:space:]]+)*(${DOCKER_VERBS}))|(docker-compose[[:space:]]+([-a-z]+[[:space:]]+[^[:space:]]+[[:space:]]+)*(up|down|restart|rm|pull|build|create|kill|stop|start|exec|run))|(systemctl[[:space:]]+(restart|stop|start|enable|disable|mask|unmask|daemon-reload))|((apt|apt-get|dpkg|snap)[[:space:]]+(install|remove|purge|upgrade|dist-upgrade|autoremove))|((${SIMPLE_VERBS})${END}))|[^<>|]>>?[[:space:]]*[/~]"
 today_incident() { ls "$INV"/incidents/INCIDENT-"$(date +%F)"-*.md >/dev/null 2>&1; }
 has() { printf '%s' "$CMD" | grep -qE -- "$1"; }
 remote_part() { printf '%s' "$CMD" | grep -oE "ssh[[:space:]]+[^\"']*(\"[^\"]*\"|'[^']*')" | sed -E "s/^ssh[^\"']*//"; }
@@ -56,12 +63,13 @@ fi
 if has "${B}(bash|sh|zsh|eval|python3?|perl|ruby|node)[[:space:]]+(-c|-e|\"|')" && has "(${HOSTS}|${NET})" && has "$MUTATE|docker[[:space:]]+(exec|restart|stop|start|rm|kill)|restart|systemctl"; then
   deny "rule 1: a wrapped shell/language one-liner that names a lab host and a mutating verb is denied outright — write the change as a role task instead."
 fi
-# 2b. file transfer onto a lab host
-if has "${B}(scp|rsync|sftp)[[:space:]]" && has "(${NET})"; then
+# 2b. file transfer onto a lab host (short names count here: `media:` is a target)
+if has "${B}(scp|rsync|sftp)[[:space:]]" && has "(${NET})|(^|[[:space:]@])(${HOSTS}):"; then
   deny "rule 1: scp/rsync/sftp to a lab host is a write. Deliver files with a role task (template/copy/registry import) via site.yml."
 fi
 # 3. docker --context / DOCKER_HOST against a managed host
-if has "docker[[:space:]]+(--context|-c)[[:space:]]+[^[:space:]]+[[:space:]]+(exec|restart|stop|start|rm|kill|compose[[:space:]]+(up|down|restart|rm|pull))|DOCKER_HOST=[^[:space:]]+[[:space:]]+docker[[:space:]]+(exec|restart|stop|start|rm|kill|compose)"; then
+CTX_VERBS='(exec|restart|stop|start|rm|rmi|kill|run|create|cp|build|update|load|import|commit|pause|unpause|rename|tag|push|(image|system|container|volume|network|builder)[[:space:]]+(prune|rm|remove|create)|compose([[:space:]]+-[-a-z]+([[:space:]]+[^[:space:]]+)?)*[[:space:]]+(up|down|restart|rm|pull|build|create|kill|stop|start|exec|run))'
+if has "docker[[:space:]]+(--context|-c|--host|-H)[[:space:]]+[^[:space:]]+([[:space:]]+-[-a-z]+([[:space:]]+[^[:space:]]+)?)*[[:space:]]+${CTX_VERBS}|DOCKER_HOST=[^[:space:]]+[[:space:]]+docker[[:space:]]+${CTX_VERBS}|DOCKER_CONTEXT=[^[:space:]]+[[:space:]]+docker[[:space:]]+${CTX_VERBS}"; then
   today_incident && ask "emergency path: incident record exists for today — confirm this action is recorded there."
   deny "rule 1: mutating docker command against a managed host. Codify it, or open today's incident record first (Q1)."
 fi

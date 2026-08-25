@@ -1,0 +1,23 @@
+---
+name: validate
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install toolchain (poetry, pinned collections)
+        run: |
+          pip install poetry
+          poetry install --no-root
+          make deps
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Lint, syntax, no-secrets, hook tests (portable subset)
+        run: make ci

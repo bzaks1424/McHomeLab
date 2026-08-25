@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # PostToolUse[Write|Edit]: the tight half of the validation loop — lint the
-# touched file now; the full `make validate` runs at Stop. Findings block;
-# a missing linter is reported as a finding (never silently passed).
+# touched file now; the full `make validate` runs at Stop. Findings block.
+# A missing linter also blocks (fails CLOSED, deliberately): an unlinted YAML
+# edit must not pass silently just because the venv is absent.
 set -uo pipefail
 command -v jq >/dev/null 2>&1 || { echo "check_edit: jq missing" >&2; exit 2; }
 REPO="$HOME/workspace/McHomeLab"; INV="$HOME/workspace/McHomeLab-Inventory"

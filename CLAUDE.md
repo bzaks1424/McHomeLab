@@ -2,11 +2,17 @@
 
 These are non-negotiable. Hooks enforce what a command or path alone can decide
 (`.claude/hooks/`, tested by `scripts/hooks/test_hooks.sh`); the rest is on you.
-**Live enforcement runs from the installed copy `~/.mhl/hooks/`**, populated
-from `main` by `scripts/mhl-install-hooks` after a governance PR merges —
-editing `.claude/hooks/*` on a branch changes nothing until then. The two
-files that take effect live, `.claude/settings.json` and `CLAUDE.md`, are
+**Live enforcement = user-scope hooks (`~/.claude/settings.json`, Mike's file;
+reference block `scripts/hooks/user-settings-hooks.json`) running the installed
+copies in `~/.mhl/hooks/`**, populated from `main` by `scripts/mhl-install-hooks`
+after a governance PR merges. Editing `.claude/hooks/*` on a branch changes
+nothing until then; `make hooks-installed` verifies what is actually enforcing.
+Files that define what runs unprompted or what the guards check (`.claude/*`
+other than `hooks/`, `Makefile`, the harness, git hooks, installer, `.mcp.json`)
+are not editable by the agent. `.claude/settings.json` and `CLAUDE.md` are
 edited only after Mike runs `touch ~/.mhl/approvals/<file>` (one-shot, 30 min).
+Fleet-touching commands are always invoked directly (never via `make`), so the
+Bash guard sees every real command.
 The global `~/.claude/CLAUDE.md` still applies; this file is more specific.
 Design, decisions and the organization strategy: `research/RESEARCH_SYSADMIN_AGENT.md`
 (§9 decisions, §13 where things live). Ideology: `research/RESEARCH_ANSIBLE_GOVERNANCE.md` §0.

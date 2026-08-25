@@ -26,6 +26,14 @@ fi
 for sf in "$REPO/.claude/settings.local.json" "$REPO/.claude/settings.json" "$HOME/.claude/settings.local.json" "$HOME/.claude/settings.json"; do
   [ -f "$sf" ] && jq -e '.disableAllHooks == true' "$sf" >/dev/null 2>&1 && R="$R"$'\n'"disableAllHooks is set in $sf — guards are off; remove it (rule 1)"
 done
+# Integrity of the live enforcement set. The checker itself failing to run is a block
+# (fail closed), never a skipped check.
+if [ -x "$REPO/scripts/mhl-manifest" ]; then
+  MOUT=$("$REPO/scripts/mhl-manifest" check 2>&1); MRC=$?
+  [ "$MRC" -ne 0 ] && R="$R"$'\n'"governance integrity ($("$REPO/scripts/mhl-manifest" mode 2>/dev/null)): $(printf '%s' "$MOUT" | head -4)"
+else
+  R="$R"$'\n'"governance integrity checker missing ($REPO/scripts/mhl-manifest) — cannot verify the enforcement set"
+fi
 OPEN=$(grep -lE '^status:[[:space:]]*open' "$INV"/incidents/INCIDENT-*.md 2>/dev/null | xargs -r -n1 basename)
 [ -n "$OPEN" ] && R="$R"$'\n'"open incident(s) (rule 2) — codify the parameter changes or close them: $OPEN"
 if ! fired memory; then

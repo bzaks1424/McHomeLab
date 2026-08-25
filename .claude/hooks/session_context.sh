@@ -26,6 +26,9 @@ ctx() {
   for sf in "$REPO/.claude/settings.local.json" "$REPO/.claude/settings.json" "$HOME/.claude/settings.local.json" "$HOME/.claude/settings.json"; do
     [ -f "$sf" ] && jq -e '.disableAllHooks == true' "$sf" >/dev/null 2>&1 && missing="$missing disableAllHooks-in-$(basename "$(dirname "$sf")")/$(basename "$sf")"
   done
+  if [ -x "$REPO/scripts/mhl-manifest" ]; then
+    if mo=$("$REPO/scripts/mhl-manifest" check 2>&1); then echo "governance integrity: $mo"; else echo "GOVERNANCE INTEGRITY VIOLATION ($("$REPO/scripts/mhl-manifest" mode 2>/dev/null)): $(printf '%s' "$mo" | head -3 | tr '\n' ' ') — stop_gate will block until reinstalled from main"; fi
+  else echo "governance integrity checker missing — cannot verify the enforcement set"; fi
   if [ -n "$missing" ]; then echo "GUARDS NOT ACTIVE on this machine:$missing — run scripts/mhl-install-hooks from main and paste scripts/hooks/user-settings-hooks.json into ~/.claude/settings.json; remove any disableAllHooks (make hooks-installed verifies)"; else echo "guards: active (installed copies wired from user settings, no disableAllHooks)"; fi
   op=$(grep -lE '^status:[[:space:]]*open' "$INV"/incidents/INCIDENT-*.md 2>/dev/null | wc -l); echo "open incidents: $op"
   [ -r "$HOME/.mhl/vault/mhl.pass" ] && echo "vault: password file present" || echo "vault: MISSING ~/.mhl/vault/mhl.pass — restore from Mike's password safe"

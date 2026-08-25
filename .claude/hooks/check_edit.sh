@@ -5,8 +5,15 @@
 # edit must not pass silently just because the venv is absent.
 set -uo pipefail
 command -v jq >/dev/null 2>&1 || { echo "check_edit: jq missing" >&2; exit 2; }
-REPO="$HOME/workspace/McHomeLab"; INV="$HOME/workspace/McHomeLab-Inventory"
-P=$(cat | jq -r '.tool_input.file_path // .tool_response.filePath // ""') || exit 2
+REPO=$(realpath -m "${MHL_REPO:-$HOME/workspace/McHomeLab}"); INV=$(realpath -m "${MHL_INVENTORY:-$HOME/workspace/McHomeLab-Inventory}")
+PAYLOAD=$(cat) || exit 2
+ROOT="$REPO"
+# Scope: these hooks are wired from USER settings, so they run in every Claude
+# session on this machine. They act only when the session is inside McHomeLab
+# or the inventory; elsewhere they allow everything (review round-3 addendum).
+CWD=$(printf '%s' "$PAYLOAD" | jq -r '.cwd // ""')
+case "$CWD" in "$ROOT"|"$ROOT"/*|"$INV"|"$INV"/*) ;; *) exit 0 ;; esac
+P=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.file_path // .tool_response.filePath // ""')
 [ -f "$P" ] || exit 0
 P=$(realpath -m "$P")
 YAMLLINT="$REPO/.venv/bin/yamllint"; [ -x "$YAMLLINT" ] || YAMLLINT=$(command -v yamllint || true)

@@ -19,8 +19,12 @@ expect() {
   else got=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // .decision // "malformed"' 2>/dev/null || echo malformed); fi
   if [ "$got" = "$3" ]; then PASS=$((PASS+1)); echo "ok    $1"; else FAIL=$((FAIL+1)); echo "FAIL  $1 (want $3, got $got)"; fi
 }
-b() { jq -nc --arg c "$1" '{tool_input:{command:$c}}'; }
-w() { jq -nc --arg p "$1" '{tool_input:{file_path:$p}}'; }
+export MHL_REPO="$ROOT"; export MHL_INVENTORY="${MHL_INVENTORY:-$ROOT/../McHomeLab-Inventory}"
+# Hooks act only when the session cwd is inside the repo/inventory; payloads carry cwd.
+b()  { jq -nc --arg c "$1" --arg d "$ROOT" '{cwd:$d,tool_input:{command:$c}}'; }
+w()  { jq -nc --arg p "$1" --arg d "$ROOT" '{cwd:$d,tool_input:{file_path:$p}}'; }
+bo() { jq -nc --arg c "$1" '{cwd:"/home/mmcdonnell/workspace/other",tool_input:{command:$c}}'; }
+wo() { jq -nc --arg p "$1" '{cwd:"/home/mmcdonnell/workspace/other",tool_input:{file_path:$p}}'; }
 G=guard_bash.sh
 expect "docker ps over ssh is a read"            $G allow "$(b 'ssh media.michaelpmcd.com "docker ps"')"
 expect "docker logs over ssh is a read"          $G allow "$(b 'ssh util.michaelpmcd.com "docker logs compose-wud-1 --tail 50"')"
@@ -78,6 +82,27 @@ expect "docker --context volume rm denied"           $G deny  "$(b 'docker --con
 expect "scp to short-name lab host denied"           $G deny  "$(b 'scp x.sh media:/opt/x.sh')"
 expect "docker ps --format braces allowed"           $G allow "$(b 'ssh media.michaelpmcd.com "docker ps -a --format '"'"'{{.Names}}'"'"'"')"
 expect "grep for docker restart in roles allowed"    $G allow "$(b 'grep -rn "docker restart" ansible/roles/')"
+expect "curl -o into settings.local.json denied"     $G deny  "$(b 'curl -sf https://example.com/p -o /home/mmcdonnell/workspace/McHomeLab/.claude/settings.local.json')"
+expect "curl -o to installed hook denied"            $G deny  "$(b 'curl -sf https://x/p -o /home/mmcdonnell/.mhl/hooks/guard_bash.sh')"
+expect "redirect into settings.local.json denied"    $G deny  "$(b 'echo x > .claude/settings.local.json')"
+expect "tee into installed hook denied"              $G deny  "$(b 'echo exit 0 | tee ~/.mhl/hooks/guard_bash.sh')"
+expect "sed -i on Makefile denied"                   $G deny  "$(b 'sed -i s/a/b/ Makefile')"
+expect "cp over the gate denied"                     $G deny  "$(b 'cp /tmp/x scripts/mhl-no-secrets')"
+expect "python open write to .claude denied"         $G deny  "$(b "python3 -c \"open('.claude/settings.local.json','w').write('x')\"")"
+expect "cat of a hook file allowed (read)"           $G allow "$(b 'cat .claude/hooks/guard_bash.sh')"
+expect "bash -c echo that worked allowed"            $G allow "$(b "bash -c 'echo that worked'")"
+expect "python3 -c hashlib allowed"                  $G allow "$(b "python3 -c 'import hashlib; print(1)'")"
+expect "bash -c grep shared allowed"                 $G allow "$(b "bash -c 'grep -rn shared ansible/roles/'")"
+expect "heredoc with that/scratch allowed"           $G allow "$(b $'cat > /tmp/claude-x/note.md <<EOF\nthat scratch note\nEOF')"
+expect "ansible -b -m shell denied"                  $G deny  "$(b 'ansible media -b -m shell -a "systemctl restart nginx"')"
+expect "ansible --become -m shell denied"            $G deny  "$(b 'ansible media --become -m shell -a reboot')"
+expect "ansible pattern-last -m shell denied"        $G deny  "$(b 'ansible -m shell -a "rm /x" media')"
+expect "ansible -m replace denied"                   $G deny  "$(b 'ansible util -m replace -a x')"
+expect "ansible docker_compose_v2 denied"            $G deny  "$(b 'ansible media -m community.docker.docker_compose_v2 -a x')"
+expect "ansible localhost -b -m shell allowed"       $G allow "$(b 'ansible localhost -b -m shell -a id')"
+expect "docker context use denied"                   $G deny  "$(b 'docker context use media')"
+expect "sftp short name denied"                      $G deny  "$(b 'sftp media')"
+expect "outside-repo cwd: lab mutation allowed"      $G allow "$(bo 'ssh media.michaelpmcd.com "docker restart x"')"
 expect "empty allowed"                           $G allow "$(b '')"
 W=guard_writes.sh
 expect "write role file allowed"                 $W allow "$(w "$HOME/workspace/McHomeLab/ansible/roles/service/tasks/main.yml")"
@@ -94,6 +119,11 @@ expect "write repo hook copy allowed"            $W allow "$(w "$HOME/workspace/
 expect "write user settings denied"              $W deny  "$(w "$HOME/.claude/settings.json")"
 expect "traversal into /etc denied"              $W deny  "$(w "$HOME/workspace/McHomeLab/../../../../etc/hosts")"
 expect "write other ~/.claude path denied"       $W deny  "$(w "$HOME/.claude/agents/x.md")"
+expect "write another project's memory allowed"  $W allow "$(w "$HOME/.claude/projects/-home-mmcdonnell-workspace-tmpclaude/memory/x.md")"
+expect "outside-repo cwd: any write allowed"     $W allow "$(wo "$HOME/workspace/other/file.md")"
+expect "write mhl-no-secrets denied"             $W deny  "$(w "$HOME/workspace/McHomeLab/scripts/mhl-no-secrets")"
+expect "write workflow denied"                   $W deny  "$(w "$HOME/workspace/McHomeLab/.github/workflows/validate.yml")"
+expect "write .ansible-lint.yml denied"          $W deny  "$(w "$HOME/workspace/McHomeLab/.ansible-lint.yml")"
 expect "write settings.local.json denied"        $W deny  "$(w "$HOME/workspace/McHomeLab/.claude/settings.local.json")"
 expect "write project agent denied"              $W deny  "$(w "$HOME/workspace/McHomeLab/.claude/agents/drift-checker.md")"
 expect "write project skill denied"              $W deny  "$(w "$HOME/workspace/McHomeLab/.claude/skills/drift/SKILL.md")"
@@ -110,7 +140,7 @@ expect "write other repo denied"                 $W deny  "$(w "$HOME/workspace/
 # Fail-closed paths: every guard must exit 2 (not allow) when jq is missing
 # or the payload is unreadable. Run with an empty PATH so jq cannot be found.
 for hook in guard_bash.sh guard_writes.sh check_edit.sh stop_gate.sh session_context.sh; do
-  rc=$(printf '{}' | PATH=/nonexistent /bin/bash "$H/$hook" >/dev/null 2>&1; echo $?)
+  rc=$(jq -nc --arg d "$ROOT" '{cwd:$d,tool_input:{command:"ls",file_path:"/x"}}' | PATH=/nonexistent /bin/bash "$H/$hook" >/dev/null 2>&1; echo $?)
   if [ "$rc" -eq 2 ]; then PASS=$((PASS+1)); echo "ok    $hook fails closed without jq"; else FAIL=$((FAIL+1)); echo "FAIL  $hook without jq: exit $rc (want 2)"; fi
 done
 # Harness self-test: a missing hook and a hook that exits non-zero must both score FAIL, never allow.
@@ -127,7 +157,7 @@ expect "check ok yaml passes"                    $C allow "$(w "$T/ok.yml")"
 expect "check bad sh blocks"                     $C block "$(w "$T/bad.sh")"
 expect "check ok sh passes"                      $C allow "$(w "$T/ok.sh")"
 expect "check nonexistent passes"                $C allow "$(w "$T/nope.yml")"
-S=$(printf '{}' | bash "$H/session_context.sh" | jq -r '.hookSpecificOutput.additionalContext'); if printf '%s' "$S" | grep -q 'Binding: CLAUDE.md'; then PASS=$((PASS+1)); echo "ok    session_context injects rules"; else FAIL=$((FAIL+1)); echo "FAIL  session_context"; fi
+S=$(jq -nc --arg d "$ROOT" '{cwd:$d}' | bash "$H/session_context.sh" | jq -r '.hookSpecificOutput.additionalContext'); if printf '%s' "$S" | grep -q 'Binding: CLAUDE.md'; then PASS=$((PASS+1)); echo "ok    session_context injects rules"; else FAIL=$((FAIL+1)); echo "FAIL  session_context"; fi
 # Portable structural checks (run in CI too):
 # The repo's settings.json defines NO hooks (Mike's decision, 2026-08-25: hook
 # definitions live in user scope, ~/.claude/settings.json, so a project-local
@@ -172,6 +202,10 @@ if [ "${MHL_HOOKS_INSTALLED:-0}" = "1" ]; then
   for repo in "$ROOT" "$ROOT/../McHomeLab-Inventory"; do
     hp=$(git -C "$repo" config core.hooksPath 2>/dev/null)
     if [ -n "$hp" ] && [ -x "$hp/pre-push" ]; then PASS=$((PASS+1)); echo "ok    core.hooksPath $(basename "$(cd "$repo" && pwd)")"; else FAIL=$((FAIL+1)); echo "FAIL  core.hooksPath unset in $(basename "$(cd "$repo" && pwd)") — run scripts/mhl-install-hooks"; fi
+  done
+  # No scope may carry disableAllHooks (project-local outranks user scope).
+  for sf in "$ROOT/.claude/settings.local.json" "$ROOT/.claude/settings.json" "$HOME/.claude/settings.local.json" "$HOME/.claude/settings.json"; do
+    if [ -f "$sf" ] && jq -e '.disableAllHooks == true' "$sf" >/dev/null 2>&1; then FAIL=$((FAIL+1)); echo "FAIL  disableAllHooks set in $sf — GUARDS OFF"; else PASS=$((PASS+1)); echo "ok    no disableAllHooks in $(basename "$sf")"; fi
   done
   # The LIVE enforcement point is user scope: its hook commands must point at the installed copies.
   US="$HOME/.claude/settings.json"

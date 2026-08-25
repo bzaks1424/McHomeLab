@@ -4,8 +4,15 @@
 # reminder cannot consume the validate gate's marker (review M1).
 set -uo pipefail
 command -v jq >/dev/null 2>&1 || { echo "stop_gate: jq missing" >&2; exit 2; }
-REPO="$HOME/workspace/McHomeLab"; INV="$HOME/workspace/McHomeLab-Inventory"
+REPO=$(realpath -m "${MHL_REPO:-$HOME/workspace/McHomeLab}"); INV=$(realpath -m "${MHL_INVENTORY:-$HOME/workspace/McHomeLab-Inventory}")
 MEMDIR="$HOME/.claude/projects/-home-mmcdonnell-workspace-McHomeLab/memory"
+PAYLOAD=$(cat 2>/dev/null || true)
+ROOT="$REPO"
+# Scope: these hooks are wired from USER settings, so they run in every Claude
+# session on this machine. They act only when the session is inside McHomeLab
+# or the inventory; elsewhere they allow everything (review round-3 addendum).
+CWD=$(printf '%s' "$PAYLOAD" | jq -r '.cwd // ""')
+case "$CWD" in "$ROOT"|"$ROOT"/*|"$INV"|"$INV"/*) ;; *) exit 0 ;; esac
 TODAY=$(date +%F); R=""
 fired() { [ "$(cat "$MEMDIR/.stop-gate-$1" 2>/dev/null)" = "$TODAY" ]; }
 mark()  { echo "$TODAY" > "$MEMDIR/.stop-gate-$1"; }
@@ -16,6 +23,9 @@ mark()  { echo "$TODAY" > "$MEMDIR/.stop-gate-$1"; }
 if ! (cd "$REPO" && timeout 300 make validate >/tmp/mhl-validate.log 2>&1); then
   R="make validate is RED (rule 4):"$'\n'"$(grep -E 'FAIL|Failed|fatal|error|Error' /tmp/mhl-validate.log | head -8)"
 fi
+for sf in "$REPO/.claude/settings.local.json" "$REPO/.claude/settings.json" "$HOME/.claude/settings.local.json" "$HOME/.claude/settings.json"; do
+  [ -f "$sf" ] && jq -e '.disableAllHooks == true' "$sf" >/dev/null 2>&1 && R="$R"$'\n'"disableAllHooks is set in $sf — guards are off; remove it (rule 1)"
+done
 OPEN=$(grep -lE '^status:[[:space:]]*open' "$INV"/incidents/INCIDENT-*.md 2>/dev/null | xargs -r -n1 basename)
 [ -n "$OPEN" ] && R="$R"$'\n'"open incident(s) (rule 2) — codify the parameter changes or close them: $OPEN"
 if ! fired memory; then

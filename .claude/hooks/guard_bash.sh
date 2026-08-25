@@ -8,9 +8,14 @@ set -uo pipefail
 command -v jq >/dev/null 2>&1 || { echo "guard_bash: jq missing — refusing to run unguarded" >&2; exit 2; }
 # Fixed repo paths: this script runs from the INSTALLED copy (~/.mhl/hooks),
 # so its own location says nothing about where the repos are.
-ROOT="$HOME/workspace/McHomeLab"
-INV="$HOME/workspace/McHomeLab-Inventory"
+ROOT=$(realpath -m "${MHL_REPO:-$HOME/workspace/McHomeLab}")
+INV=$(realpath -m "${MHL_INVENTORY:-$HOME/workspace/McHomeLab-Inventory}")
 PAYLOAD=$(cat) || exit 2
+# Scope: these hooks are wired from USER settings, so they run in every Claude
+# session on this machine. They act only when the session is inside McHomeLab
+# or the inventory; elsewhere they allow everything (review round-3 addendum).
+CWD=$(printf '%s' "$PAYLOAD" | jq -r '.cwd // ""')
+case "$CWD" in "$ROOT"|"$ROOT"/*|"$INV"|"$INV"/*) ;; *) exit 0 ;; esac
 CMD=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // ""') || exit 2
 [ -z "$CMD" ] && exit 0
 
@@ -43,10 +48,23 @@ remote_part() { printf '%s' "$CMD" | grep -oE "ssh[[:space:]]+[^\"']*(\"[^\"]*\"
 
 # 0. vault password must never be read by a shell command
 if has "\.mhl/vault"; then deny "rule 5: the vault password is read only by ~/.mhl/bin/mhl-vault-client via ansible; never by a command."; fi
+# 0b. no Bash-route writes to governance paths (review round-3 B1/B2): the file
+# guard only sees Write/Edit, so redirects, tee, cp/mv, sed -i, curl -o, python
+# open(...,'w'), rm, chmod, install, ln against these paths are denied here.
+GOV='(\.claude/|\.mhl/(hooks|bin|approvals|archive|pre-vault)|(^|[[:space:]/"'"'"'=])(CLAUDE(\.local)?\.md|Makefile|\.github/|\.yamllint|\.ansible-lint\.yml|scripts/(hooks|git-hooks|tests)/|scripts/(mhl-install-hooks|mhl-no-secrets|mhl_secrets\.py|mhl-vault-file|mhl-pr)))'
+if has "$GOV"; then
+  if has "(>>?[[:space:]]*[^[:space:]]*${GOV})|${B}(tee|cp|mv|install|ln|rm|chmod|chown|touch|truncate|dd|patch|rsync)[[:space:]]+([^;&|]*[[:space:]])?[^[:space:]]*${GOV}|sed[[:space:]]+(-[a-zA-Z]*i|--in-place)|(curl|wget)[[:space:]]+.*(-o|-O|--output|--output-dir|--remote-name)|python3?[[:space:]]+-c.*open\(|open\([^)]*['\"][wa]|shutil\.|os\.(remove|unlink|rename|replace|chmod)|git[[:space:]]+(checkout|restore|apply|stash[[:space:]]+pop)[^|]*${GOV}"; then
+    deny "rule 8: governance paths (.claude/, ~/.mhl/{hooks,bin,approvals}, ~/.claude, CLAUDE.md, Makefile, .github, lint configs, scripts/{hooks,git-hooks,tests}, the gate and installer) are not written by shell commands — change them on a branch with the file tools and land via PR."
+  fi
+fi
 
 # 1. ad hoc mutating ansible module against a real host (localhost is fine)
-if has "${B}ansible[[:space:]]+(-i[[:space:]]+[^[:space:]]+[[:space:]]+)?[^[:space:]-]+([[:space:]]+-[^m][^[:space:]]*[[:space:]]+[^[:space:]]+)*[[:space:]]+-m[[:space:]]+(ansible\.builtin\.)?(shell|command|raw|script|uri|copy|file|template|lineinfile|blockinfile|systemd|service|apt)" \
-   && ! has "${B}ansible[[:space:]]+(-i[[:space:]]+[^[:space:]]+[[:space:]]+)?localhost"; then
+MUT_MODULES='shell|command|raw|script|uri|copy|file|template|lineinfile|blockinfile|replace|unarchive|get_url|reboot|user|group|cron|pip|authorized_key|known_hosts|systemd|service|apt|apt_repository|dnf|yum|package|mount|docker_container|docker_compose(_v2)?|docker_image|docker_network|docker_volume|iptables|ufw|firewalld|hostname|timezone|sysctl|modprobe|lvol|filesystem|parted|synchronize|assemble|ini_file|xml|yedit|git|make'
+# Any `ansible <pattern> … -m <mutating module>` where the pattern is not localhost.
+# Flags before -m may or may not take values (-b, --become, -o, -v...), so the
+# pattern is located independently: the first non-flag token after `ansible`.
+if has "${B}ansible[[:space:]]+(.*[[:space:]])?-m[[:space:]]+([a-z_]+\.[a-z_]+\.)?(${MUT_MODULES})([[:space:]]|$)" \
+   && ! has "${B}ansible[[:space:]]+((-[-a-zA-Z]+([[:space:]=]+[^[:space:]-][^[:space:]]*)?)[[:space:]]+)*localhost([[:space:]]|$)"; then
   deny "rule 1: ad hoc mutating module against a lab host. Declare it in a role/inventory and run site.yml (or --check). Read-only modules (setup, ping, debug) are fine."
 fi
 # 2. ssh to a lab host carrying a mutating command (checked inside the quoted remote part)
@@ -60,11 +78,11 @@ fi
 # 2c. wrapped shells / language one-liners carrying a lab host and a mutating
 # verb (bash -c, sh -c, eval, python3 -c, perl -e ...) — the wrapper hides the
 # structure, so any such combination is denied outright (review M4/M5).
-if has "${B}(bash|sh|zsh|eval|python3?|perl|ruby|node)[[:space:]]+(-c|-e|\"|')" && has "(${HOSTS}|${NET})" && has "$MUTATE|docker[[:space:]]+(exec|restart|stop|start|rm|kill)|restart|systemctl"; then
+if has "${B}(bash|sh|zsh|eval|python3?|perl|ruby|node)[[:space:]]+(-c|-e|\"|')" && has "(^|[[:space:]/@\"'=:,\[(])(${HOSTS}|${NET})${TAIL}|(^|[[:space:]\"',\[(])(${HOSTS})[\"',)\]]" && has "$MUTATE"; then
   deny "rule 1: a wrapped shell/language one-liner that names a lab host and a mutating verb is denied outright — write the change as a role task instead."
 fi
 # 2b. file transfer onto a lab host (short names count here: `media:` is a target)
-if has "${B}(scp|rsync|sftp)[[:space:]]" && has "(${NET})|(^|[[:space:]@])(${HOSTS}):"; then
+if has "${B}(scp|rsync|sftp)[[:space:]]" && has "(${NET})|(^|[[:space:]@])(${HOSTS})(:|[[:space:]]|$)"; then
   deny "rule 1: scp/rsync/sftp to a lab host is a write. Deliver files with a role task (template/copy/registry import) via site.yml."
 fi
 # 3. docker --context / DOCKER_HOST against a managed host
@@ -83,8 +101,8 @@ if has "${B}step[[:space:]]+ca[[:space:]]+(certificate|sign|renew|revoke)"; then
   deny "rule 1: certificate issuance happens only inside roles/step-ca-cert via site.yml."
 fi
 # 6. docker context create/rm on the controller (owned by the controller role)
-if has "docker[[:space:]]+context[[:space:]]+(create|rm|update)"; then
-  deny "rule 1: docker CLI contexts are declared by the controller role, not created by hand."
+if has "docker[[:space:]]+context[[:space:]]+(create|rm|update|use|import)"; then
+  deny "rule 1: docker CLI contexts are declared by the controller role, not created, switched or imported by hand (use --context per command)."
 fi
 # 7. --limit with site.yml
 if has "ansible-playbook.*site\.yml" && has "(^|[[:space:]])(--limit|-l)[[:space:]=]"; then

@@ -8,46 +8,53 @@ value is a scalar that is not already !vault, not a {{ }} reference, and not
 empty.
 
 Safety properties (reviews of PR #6, 2026-08-25):
-- The value is taken from the SOURCE TEXT via a YAML scanner that never
-  resolves types (BaseLoader), so `004821` stays `004821`, `yes` stays `yes`.
-  Never a hand regex, never PyYAML's implicit resolver.
-- Any YAML error is reported as "could not parse line N" — the exception text
-  (which quotes the source line) is never printed.
+- The value is taken from the SOURCE TEXT via the YAML scanner with BaseLoader
+  (no type resolution): `004821` stays `004821`, `yes` stays `yes`.
+- YAML errors are reported as "line N: could not parse"; exception text (which
+  quotes the source line) is never printed. No secret value is ever printed.
 - The value goes to ansible-vault on STDIN (--stdin-name), never argv.
 - Block/folded scalars, flow collections, aliases/anchors, multi-document
-  files and symlinked targets are refused before anything is written.
+  files, CRLF, non-UTF-8 and symlinked targets are refused before any write.
 - Every produced block is decrypted and compared byte-for-byte to the source
-  value; the whole output is then re-scanned and every vaulted key is decrypted
-  again from the new file before it replaces the original.
-- Output is written to a temp file in the target's directory (0600, mode of
-  the original restored) and renamed over it; temp files are removed on every
-  failure path. The original is preserved OUTSIDE the repo at
-  ~/.mhl/pre-vault/<name>.<timestamp> created O_EXCL 0600 — never next to the
-  file, never at a path the gate ignores. Nothing is ever clobbered.
+  value; the written file is re-scanned and every vaulted key decrypted again.
+- Output goes to a temp file in the target's directory and is renamed over it
+  (mode preserved); temp files are removed on every failure path.
 - ansible-vault and python come from the project venv, not PATH.
 
 Lifecycle of the plaintext original (Mike's requirement, 2026-08-25):
-  1. Durable home = Mike's password safe (the same escrow as the vault
-     password). Never a repo. The vaulted value in the inventory is the git
-     artifact.
-  2. ~/.mhl/pre-vault/<name>.<ts>.<pid> is RETAINED until verified:
-     `mhl-vault-file --purge <inventory.yml ...>` reads each backup's
-     plaintext values, decrypts the same keys from the given committed files,
-     and compares BYTE FOR BYTE; a backup is shredded only when every one of
-     its keys matches. Missing key, mismatch, decrypt failure, unknown source
-     file: refuse and name the key/file, never the value. Retention is tied
-     to verified fidelity, not to "it decrypts" and not to time.
-  3. `mhl-vault-file --list` shows pending backups; session_context reports
-     the pending count at every session start.
+  1. Durable home = Mike's password safe (own master password, backed up to
+     Google Drive, independent of the vault password). Never a repo. The
+     vaulted value in the inventory is the git artifact.
+  2. The original is preserved OUTSIDE any repo at
+        ~/.mhl/pre-vault/<basename>.<ts>.<pid>.pre-vault   (O_EXCL, 0600)
+     with a sidecar `.meta` recording the source's real path, git root,
+     relative path and HEAD at backup time. It is RETAINED until verified:
+        mhl-vault-file --purge [--dry-run] [--allow-uncommitted] <inventory.yml ...>
+     For each backup: the given file must resolve to the recorded source path;
+     the file must be git-tracked and its !vault blocks must be identical in
+     `git show HEAD:<path>` (unless --allow-uncommitted); the backup's
+     plaintext values are paired POSITIONALLY with the inventory's !vault
+     blocks of the same key (n-th with n-th, equal counts) and compared byte
+     for byte. Any mismatch, missing key, count difference, decrypt failure,
+     path mismatch or uncommitted ciphertext refuses, naming only key/file.
+     Every backup is verified before any is removed.
+  3. `--list` shows pending backups; session_context (McHomeLab PR #7)
+     reports the pending count at every session start.
   4. mhl-no-secrets fails on any *.pre-vault inside a tree; this tool refuses
      to run if ~/.mhl/pre-vault is group/world accessible.
 
-Usage: mhl-vault-file <file> [--dry-run] | --list | --purge <inventory.yml ...>
+Removal is one overwrite with random bytes + fsync + unlink (not shred(1);
+adequate for in-place-overwriting filesystems such as ext4, not a guarantee).
+
+Usage: mhl-vault-file <file> [--dry-run]
+       mhl-vault-file --list
+       mhl-vault-file --purge [--dry-run] [--allow-uncommitted] <inventory.yml ...>
 """
+import hmac
 import io
+import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -59,8 +66,8 @@ VENV_PY = os.path.join(ROOT, ".venv", "bin", "python3")
 VAULT = os.path.join(ROOT, ".venv", "bin", "ansible-vault")
 VAULT_ID = "mhl"
 BACKUP_DIR = os.path.join(os.path.expanduser("~"), ".mhl", "pre-vault")
+BACKUP_SUFFIX = ".pre-vault"
 
-# Re-exec under the venv so PyYAML is the pinned one (same argument as ansible-vault).
 if os.path.realpath(sys.executable) != os.path.realpath(VENV_PY) and os.access(VENV_PY, os.X_OK) and not os.environ.get("MHL_VAULT_FILE_REEXEC"):
     os.environ["MHL_VAULT_FILE_REEXEC"] = "1"
     os.execv(VENV_PY, [VENV_PY, os.path.abspath(__file__), *sys.argv[1:]])
@@ -91,8 +98,14 @@ def run_vault(args, stdin):
     r = subprocess.run([VAULT, *args], input=stdin, capture_output=True, text=True, cwd=ANSIBLE_DIR)
     if r.returncode:
         tail = r.stderr.strip().splitlines()[-1] if r.stderr.strip() else "no stderr"
-        die(f"ansible-vault {args[0]} failed: {tail}")  # stderr from ansible-vault never contains the stdin value
+        die(f"ansible-vault {args[0]} failed: {tail}")
     return r.stdout
+
+
+def decrypt(body):
+    """Return plaintext or None (never raises, never prints)."""
+    r = subprocess.run([VAULT, "decrypt", "--output", "-"], input=body, capture_output=True, text=True, cwd=ANSIBLE_DIR)
+    return None if r.returncode else r.stdout
 
 
 def encrypt(name, value):
@@ -107,12 +120,7 @@ def encrypt(name, value):
 
 
 def raw_scalar(rest, key, lineno):
-    """Return (raw_value_text, trailing_comment) from source text, or None.
-
-    Uses the YAML *scanner* with BaseLoader semantics (no type resolution):
-    the scalar's text is taken from the token, exactly as written, unquoted
-    and unescaped by the YAML rules only.
-    """
+    """(raw_value_text, trailing_comment) from source text, or None if not a plain secret."""
     stripped = rest.strip()
     if stripped == "" or stripped.startswith("#"):
         return None
@@ -133,13 +141,11 @@ def raw_scalar(rest, key, lineno):
     if len(scalars) != 1:
         die(f"line {lineno}: could not parse a single scalar value for {key}")
     tok = scalars[0]
-    value = tok.value
-    # trailing comment = text after the scalar token's end, if it starts with '#'
     tail = rest[tok.end_mark.index:].strip()
     comment = tail if tail.startswith("#") else ""
     if tail and not comment:
         die(f"line {lineno}: unexpected trailing text after the value of {key}")
-    return value, comment
+    return tok.value, comment
 
 
 def read_text(path):
@@ -153,123 +159,211 @@ def read_text(path):
     except UnicodeDecodeError:
         die(f"{path} is not UTF-8; refusing")
     if "\r\n" in text:
-        die(f"{path} has CRLF line endings; normalise it first (refusing to rewrite line endings silently)")
-    if re.search(r"^---\s*$", text, re.M) and text.count("\n---") > 0:
-        # a leading '---' is fine; a second document marker is not
-        if len(re.findall(r"^---\s*$", text, re.M)) > 1:
-            die(f"{path} is a multi-document YAML file; not supported")
+        die(f"{path} has CRLF line endings; normalise it first")
+    if len(re.findall(r"^---\s*$", text, re.M)) > 1:
+        die(f"{path} is a multi-document YAML file; not supported")
     return text
 
 
+VAULT_HDR = re.compile(r"^(?P<indent>\s*(?:-\s*)*)(?P<key>[A-Za-z0-9_.]+): !vault \|-?\s*(?:#.*)?$")
+
+
 def vault_blocks(text):
-    """Yield (key, ciphertext_body) for every inline !vault block in text."""
-    lines = text.split("\n"); i = 0
+    """Ordered [(key, ciphertext_body)] for every inline !vault block. ONE parser
+    for both the post-write verification and --purge."""
+    out, lines, i = [], text.split("\n"), 0
     while i < len(lines):
-        bm = re.match(r"^(\s*(?:-\s*)*)([A-Za-z0-9_.]+): !vault \|", lines[i])
-        if bm:
-            ind = len(bm.group(1)); body = []; j = i + 1
+        m = VAULT_HDR.match(lines[i])
+        if m:
+            ind = len(m.group("indent")); body = []; j = i + 1
             while j < len(lines) and lines[j].strip() and len(lines[j]) - len(lines[j].lstrip()) > ind:
                 body.append(lines[j].strip()); j += 1
-            yield bm.group(2), "\n".join(body); i = j
+            out.append((m.group("key"), "\n".join(body))); i = j
         else:
             i += 1
+    return out
 
 
-def backups():
+def plaintext_secrets(text, key_re):
+    """Ordered [(key, value)] of plaintext secret scalars in text."""
+    out = []
+    for lineno, line in enumerate(text.split("\n"), 1):
+        m = key_re.match(line)
+        if not m:
+            continue
+        parsed = raw_scalar(m.group("rest"), m.group("key"), lineno)
+        if parsed is not None:
+            out.append((m.group("key"), parsed[0]))
+    return out
+
+
+def git(path_dir, *args):
+    r = subprocess.run(["git", "-C", path_dir, *args], capture_output=True, text=True)
+    return (r.stdout.strip() if r.returncode == 0 else None)
+
+
+def backup_dir_ok():
     if not os.path.isdir(BACKUP_DIR):
         return []
-    mode = os.stat(BACKUP_DIR).st_mode & 0o077
-    if mode:
-        die(f"{BACKUP_DIR} is group/world accessible (mode {oct(os.stat(BACKUP_DIR).st_mode & 0o777)}); fix with chmod 700")
-    return sorted(os.path.join(BACKUP_DIR, f) for f in os.listdir(BACKUP_DIR))
+    st = os.lstat(BACKUP_DIR)
+    if st.st_mode & 0o077:
+        die(f"{BACKUP_DIR} is group/world accessible ({oct(st.st_mode & 0o777)}); fix with chmod 700")
+    if not os.access(BACKUP_DIR, os.W_OK | os.X_OK):
+        die(f"{BACKUP_DIR} is not writable; cannot remove backups")
+    entries = []
+    for f in sorted(os.listdir(BACKUP_DIR)):
+        p = os.path.join(BACKUP_DIR, f)
+        if f.endswith(".meta") or f.endswith(".lock"):
+            continue
+        if os.path.islink(p) or not os.path.isfile(p):
+            die(f"{p}: not a regular file (symlink or other) — refusing to touch the backup dir")
+        if not f.endswith(BACKUP_SUFFIX):
+            die(f"{p}: unexpected file in the backup dir — inspect by hand")
+        entries.append(p)
+    return entries
 
 
-def cmd_list():
-    bs = backups()
+def load_meta(b):
+    mp = b + ".meta"
+    if not os.path.isfile(mp):
+        die(f"{b}: missing sidecar {os.path.basename(mp)} — cannot establish its source; inspect by hand")
+    try:
+        return json.load(open(mp, encoding="utf-8"))
+    except (OSError, ValueError):
+        die(f"{b}: unreadable sidecar — inspect by hand")
+
+
+def cmd_list(args):
+    if args:
+        die("--list takes no arguments")
+    bs = backup_dir_ok()
     if not bs:
         print("no pending pre-vault backups"); return
     now = time.time()
     for b in bs:
-        st = os.stat(b)
-        print(f"{b}  {int((now - st.st_mtime) // 3600)}h old  mode {oct(st.st_mode & 0o777)}")
-    print(f"{len(bs)} pending — lifecycle: escrow the plaintext in Mike's password safe, then `mhl-vault-file --purge` once the vaulted values are verified")
+        st = os.stat(b); meta = load_meta(b)
+        warn = "" if (st.st_mode & 0o077) == 0 else "  WARNING: mode not 0600"
+        print(f"{b}  {int((now - st.st_mtime) // 3600)}h old  source={meta.get('source')}{warn}")
+    print(f"{len(bs)} pending — escrow the plaintext in the password safe, then `mhl-vault-file --purge <inventory>` once verified")
 
 
-def cmd_purge(inventory_files):
-    """Shred a backup only when EVERY plaintext secret it holds compares
-    byte-for-byte with the decrypted !vault value for the same key in the
-    given committed inventory file. "It decrypts" is not enough — that proves
-    the password, not fidelity. Every ambiguous case refuses. Values are never
-    printed; only key names and paths."""
-    bs = backups()
-    if not bs:
-        print("no pending pre-vault backups"); return
-    if not inventory_files:
-        die("--purge needs the committed inventory file(s) to compare against, e.g. --purge ../McHomeLab-Inventory/hosts.yml")
-    inv_by_name = {}
-    for f in inventory_files:
+def cmd_purge(args):
+    dry = "--dry-run" in args
+    allow_uncommitted = "--allow-uncommitted" in args
+    files = [a for a in args if a not in ("--dry-run", "--allow-uncommitted")]
+    if any(a.startswith("-") for a in files):
+        die("usage: --purge [--dry-run] [--allow-uncommitted] <inventory.yml ...>")
+    for f in files:
         if not os.path.isfile(f):
             die(f"no such inventory file: {f}")
-        inv_by_name.setdefault(os.path.basename(f), []).append(f)
+    bs = backup_dir_ok()
+    if not bs:
+        print("no pending pre-vault backups"); return
+    if not files:
+        die("--purge needs the committed inventory file(s) to compare against")
+    given = {os.path.realpath(f): f for f in files}
     key_re = secret_key_regex()
-    verified, shredded = 0, 0
-    for b in bs:
-        base = os.path.basename(b)
-        m = re.match(r"^(?P<name>.+)\.\d{8}T\d{6}\.\d+$", base)
-        if not m or m.group("name") not in inv_by_name:
-            die(f"{b}: no inventory file named '{m.group('name') if m else base}' was given — refusing (pass the matching committed file)")
-        # decrypted values from the committed inventory, per key (a key may repeat)
-        inv_vals = {}
-        for f in inv_by_name[m.group("name")]:
-            for key, body in vault_blocks(read_text(f)):
-                r = subprocess.run([VAULT, "decrypt", "--output", "-"], input=body, capture_output=True, text=True, cwd=ANSIBLE_DIR)
-                if r.returncode:
-                    die(f"{f}: {key} does not decrypt under the current vault password — refusing (rotated password? re-vault first)")
-                inv_vals.setdefault(key, []).append(r.stdout)
-        # plaintext originals from the backup
-        expected = []
-        for lineno, line in enumerate(read_text(b).split("\n"), 1):
-            km = key_re.match(line)
-            if not km:
-                continue
-            parsed = raw_scalar(km.group("rest"), km.group("key"), lineno)
-            if parsed is None:
-                continue
-            expected.append((km.group("key"), parsed[0]))
-        if not expected:
-            die(f"{b}: contains no plaintext secret values — refusing (nothing to compare; inspect it by hand)")
-        for key, plain in expected:
-            cands = inv_vals.get(key)
-            if not cands:
-                die(f"{b}: key '{key}' has no !vault value in the inventory — refusing")
-            if not any(hmac_eq(plain, c) for c in cands):
-                die(f"{b}: key '{key}' does NOT match the decrypted inventory value — refusing; the inventory may hold a corrupted secret")
-            verified += 1
-    # Two-phase: every backup verified above; only now shred (no partial purge).
-    for b in bs:
-        size = os.path.getsize(b)
-        with open(b, "r+b") as fh:
-            fh.write(os.urandom(size)); fh.flush(); os.fsync(fh.fileno())
-        os.unlink(b); shredded += 1
-    print(f"verified {verified} value(s) byte-for-byte against the inventory; shredded {shredded} backup(s)")
-
-
-def hmac_eq(a, b):
-    import hmac
-    return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
+    lock = os.path.join(BACKUP_DIR, ".purge.lock")
+    try:
+        lfd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        die(f"another --purge is running ({lock} exists)")
+    os.close(lfd)
+    try:
+        plan, verified = [], 0
+        for b in bs:
+            meta = load_meta(b)
+            src = meta.get("source")
+            if src not in given:
+                die(f"{os.path.basename(b)}: its source is {src}; that file was not given — refusing")
+            f = given[src]
+            st = os.stat(b)
+            if not os.access(b, os.W_OK):
+                die(f"{b}: not writable; cannot remove — fix modes first")
+            if st.st_mode & 0o077:
+                die(f"{b}: mode {oct(st.st_mode & 0o777)} is not 0600 — fix it (and consider the value exposed) before purging")
+            text = read_text(f)
+            blocks = vault_blocks(text)
+            if not allow_uncommitted:
+                d = os.path.dirname(os.path.abspath(f))
+                top = git(d, "rev-parse", "--show-toplevel")
+                if not top:
+                    die(f"{f}: not inside a git repository — refusing (use --allow-uncommitted to override)")
+                rel = os.path.relpath(os.path.realpath(f), os.path.realpath(top))
+                if git(d, "ls-files", "--error-unmatch", "--", rel) is None:
+                    die(f"{f}: not tracked by git — refusing (use --allow-uncommitted to override)")
+                head = subprocess.run(["git", "-C", d, "show", f"HEAD:{rel}"], capture_output=True, text=True)
+                if head.returncode or vault_blocks(head.stdout) != blocks:
+                    die(f"{f}: its !vault blocks differ from HEAD — commit first (or --allow-uncommitted)")
+            expected = plaintext_secrets(read_text(b), key_re)
+            if not expected:
+                die(f"{os.path.basename(b)}: contains no plaintext secret values — refusing; inspect by hand")
+            # positional pairing: n-th occurrence of key K <-> n-th !vault block for K
+            by_key_inv = {}
+            for k, body in blocks:
+                by_key_inv.setdefault(k, []).append(body)
+            by_key_bak = {}
+            for k, v in expected:
+                by_key_bak.setdefault(k, []).append(v)
+            pairs = []
+            for k, vals in by_key_bak.items():
+                inv = by_key_inv.get(k, [])
+                if len(inv) != len(vals):
+                    die(f"{os.path.basename(b)}: key '{k}' occurs {len(vals)}x in the backup but {len(inv)}x as !vault in {f} — refusing")
+                for n, (plain, body) in enumerate(zip(vals, inv), 1):
+                    dec = decrypt(body)
+                    if dec is None:
+                        die(f"{f}: '{k}' occurrence {n} does not decrypt under the current vault password — refusing (rotated? re-vault first)")
+                    if not hmac.compare_digest(plain.encode("utf-8"), dec.encode("utf-8")):
+                        die(f"{os.path.basename(b)}: '{k}' occurrence {n} does NOT match {f} — refusing; the inventory may hold a corrupted or mis-bound secret")
+                    del dec
+                    pairs.append((k, n))
+                    verified += 1
+            del expected, by_key_bak
+            plan.append((b, f, pairs))
+        if dry:
+            for b, f, pairs in plan:
+                print(f"{os.path.basename(b)} -> {f}: {', '.join(f'{k}#{n}' for k, n in pairs)}")
+            print(f"dry run: {verified} value(s) would be verified, {len(plan)} backup(s) would be removed; nothing changed")
+            return
+        removed, failed = 0, []
+        for b, f, pairs in plan:
+            try:
+                fd = os.open(b, os.O_RDWR | os.O_NOFOLLOW)
+                try:
+                    size = os.fstat(fd).st_size
+                    os.write(fd, os.urandom(size)); os.fsync(fd)
+                finally:
+                    os.close(fd)
+                os.unlink(b)
+                try:
+                    os.unlink(b + ".meta")
+                except OSError:
+                    pass
+                removed += 1
+            except OSError as e:
+                failed.append(f"{os.path.basename(b)}: {e.strerror}")
+        print(f"verified {verified} value(s) byte-for-byte; removed {removed} backup(s)")
+        if failed:
+            die("could not remove: " + "; ".join(failed))
+    finally:
+        try:
+            os.unlink(lock)
+        except OSError:
+            pass
 
 
 def main():
     args = sys.argv[1:]
     if args and args[0] == "--list":
-        cmd_list(); return
+        cmd_list(args[1:]); return
     if args and args[0] == "--purge":
         cmd_purge(args[1:]); return
     dry = "--dry-run" in args
     if dry:
         args.remove("--dry-run")
     if len(args) != 1 or args[0].startswith("-"):
-        die("usage: mhl-vault-file <file> [--dry-run] | --list | --purge <inventory.yml ...>")
+        die("usage: mhl-vault-file <file> [--dry-run] | --list | --purge [--dry-run] [--allow-uncommitted] <inventory.yml ...>")
     path = args[0]
     if os.path.isdir(path):
         die(f"{path} is a directory")
@@ -303,43 +397,42 @@ def main():
         todo.append((m.group("key"), value))
 
     if dry:
-        print(f"dry run complete for {path}")
-        return
+        print(f"dry run complete for {path}"); return
     if not todo:
         print(f"nothing to vault in {path}"); return
 
     new_text = "\n".join(out) + "\n"
-    # Second, independent verification: scan the NEW text, decrypt every vaulted
-    # key, and compare with what we intended to store.
-    blocks, i = {}, 0
-    lines = new_text.split("\n")
-    while i < len(lines):
-        bm = re.match(r"^(\s*(?:-\s*)*)([A-Za-z0-9_.]+): !vault \|", lines[i])
-        if bm:
-            ind = len(bm.group(1)); body = []; j = i + 1
-            while j < len(lines) and lines[j].strip() and len(lines[j]) - len(lines[j].lstrip()) > ind:
-                body.append(lines[j].strip()); j += 1
-            blocks.setdefault(bm.group(2), []).append("\n".join(body)); i = j
-        else:
-            i += 1
+    # Independent post-write verification through the shared parser, positional.
+    by_key = {}
+    for k, body in vault_blocks(new_text):
+        by_key.setdefault(k, []).append(body)
+    seen = {}
     for key, value in todo:
-        cands = blocks.get(key, [])
-        if not any(run_vault(["decrypt", "--output", "-"], b) == value for b in cands):
+        n = seen.get(key, 0); seen[key] = n + 1
+        cands = by_key.get(key, [])
+        if n >= len(cands) or decrypt(cands[n]) != value:
             die(f"post-write verification failed for {key}; nothing written")
 
-    # Backup OUTSIDE the repo, O_EXCL 0600, never clobbered.
+    # Backup OUTSIDE the repo: O_EXCL 0600 + sidecar with the source identity.
     os.makedirs(BACKUP_DIR, mode=0o700, exist_ok=True)
     os.chmod(BACKUP_DIR, 0o700)
-    backup = os.path.join(BACKUP_DIR, f"{os.path.basename(path)}.{time.strftime('%Y%m%dT%H%M%S')}.{os.getpid()}")
-    try:
-        fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
-        die(f"backup path already exists: {backup}")
-    with os.fdopen(fd, "wb") as f:
-        f.write(text.encode("utf-8"))
+    stamp = f"{os.path.basename(path)}.{time.strftime('%Y%m%dT%H%M%S')}.{os.getpid()}"
+    backup = os.path.join(BACKUP_DIR, stamp + BACKUP_SUFFIX)
+    real = os.path.realpath(path)
+    d = os.path.dirname(real)
+    top = git(d, "rev-parse", "--show-toplevel")
+    meta = {"source": real, "git_root": top, "git_rel": (os.path.relpath(real, os.path.realpath(top)) if top else None),
+            "git_head": git(d, "rev-parse", "HEAD") if top else None, "created": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "keys": [k for k, _ in todo]}
+    for p, content in ((backup, text.encode("utf-8")), (backup + ".meta", json.dumps(meta, indent=1).encode("utf-8"))):
+        try:
+            fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            die(f"backup path already exists: {p}")
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(content)
 
     orig_mode = os.stat(path).st_mode & 0o777
-    fd, tmp = tempfile.mkstemp(prefix=".mhl-vault-", dir=os.path.dirname(os.path.abspath(path)))
+    fd, tmp = tempfile.mkstemp(prefix=".mhl-vault-", dir=d)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(new_text)
@@ -352,8 +445,8 @@ def main():
             pass
         raise
     print(f"vaulted {len(todo)} value(s) in {path}; plaintext original preserved at {backup} (0600, outside any repo).\n"
-          f"Lifecycle: escrow the plaintext in the password safe; once the vaulted values are verified, run "
-          f"`mhl-vault-file --purge {path}` (decrypts every value first, then shreds). `--list` shows pending backups.")
+          f"Lifecycle: escrow the plaintext in the password safe; after the change is committed, run "
+          f"`mhl-vault-file --purge --dry-run {path}` then `--purge {path}`. `--list` shows pending backups.")
 
 
 if __name__ == "__main__":

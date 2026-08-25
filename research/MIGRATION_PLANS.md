@@ -1,8 +1,7 @@
 # Migration plans — major upgrades held back from the 2026-08-24 backlog drain
 
-**Status:** PLANS, not executed. Everything else in the fleet is current as of
-2026-08-24 (WUD: 19 watched, 3 outstanding = these two + apt-cacher-ng's
-floating digest). Each plan follows the pinned-fleet discipline: one tag edit in
+**Status (2026-08-24 evening):** §0 EXECUTED (both), §2 recyclarr EXECUTED (8.7.1,
+live), §1 homepage still a plan. WUD outstanding: homepage v2 + apt-cacher-ng digest. Each plan follows the pinned-fleet discipline: one tag edit in
 `hosts.yml`, one full `site.yml`, verify, revert the tag to roll back.
 
 ---
@@ -35,6 +34,15 @@ docker --context media exec compose-recyclarr-1 recyclarr sync --preview   # mus
 
 Verify: bazarr log shows "Series/Movies … updated" and the missing-subtitle counts
 on the homepage move; recyclarr preview lists both instances without errors.
+
+**EXECUTED 2026-08-24.** recyclarr: `recyclarr.yml` is now **inventory-managed**
+(McHomeLab-Inventory/recyclarr.yml → controller export `recyclarr_config` →
+media import) with `localhost` URLs — the existing registry file-delivery, no
+code. bazarr: set via its settings API with an ad-hoc `ansible localhost -m uri`
+(JSON `-a` args — the `key=value` shorthand silently mangles the body dict);
+SignalR for both ARRs went LIVE within a second, wanted counts moved for the
+first time since ≤08-17. bazarr's `config.yaml` is app-owned and stays out of
+the inventory on purpose.
 
 **Why not fix it in gluetun instead?** Gluetun's DOT resolver is what keeps DNS
 inside the tunnel; pointing the namespace at Docker's embedded DNS would leak
@@ -113,6 +121,25 @@ to behaviour changes in sync (cached-ID trust, CF-group defaults).
 **Blast radius:** recyclarr container only (tunneled; its recreate does not
 touch gluetun). Radarr/Sonarr *settings* are what a bad sync would change —
 hence the preview step.
+
+**EXECUTED 2026-08-24 — with a lesson.** Finding first: the config had **never
+worked on 7.5.2** (guide-backed `quality_profiles[].trash_id` and
+`custom_format_groups` are v8-only; 7.5.2 throws "Exception at line 12/16"), so
+this was the only route to a functioning recyclarr. Backup at
+`/opt/containers/recyclarr.bak-2026-08-24`. Upgrade + `sync --preview` fine.
+**The lesson:** `recyclarr sync --preview` in a non-TTY (`docker exec` without
+`-t`) prints only the summary lines — the CF create/update and profile
+quality-change tables never appeared, and the real sync then (a) set the guide's
+"unwanted" CF scores (−10000: x265 (HD), Upscaled, Bad Dual Groups, …) — intended —
+and (b) **narrowed two profiles to the pure TRaSH quality lists**: Sonarr
+*WEB-1080p* lost Bluray-1080p + Remux (cutoff → WEB 1080p), Radarr *HD Bluray +
+WEB* lost Remux-1080p. The pre-sync state was recovered from the apps' own
+2026-08-21 scheduled backups (`QualityProfiles` table) and **restored
+declaratively**: `qualities:` + `upgrade.until_quality` overrides on the two
+`trash_id` profiles in the inventory `recyclarr.yml` (schema-verified: a
+guide-backed profile accepts both). Re-synced; both profiles match the backup
+exactly. Next time: preview with `docker exec -t` or read the run's
+`logs/cli/*.debug.log`, which has the full per-item diff.
 
 ---
 

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Open a pull request for the current branch. Backend adapter (Q2: the remote
+# is an interface). Today: GitHub via gh. Usage: mhl-pr "<title>" [body-file]
+set -euo pipefail
+TITLE=${1:?title}; BODY=${2:-}
+REPO_DIR=$(git rev-parse --show-toplevel); BR=$(git -C "$REPO_DIR" branch --show-current)
+DEFAULT=$(git -C "$REPO_DIR" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|origin/||'); DEFAULT=${DEFAULT:-main}
+[ "$BR" = "$DEFAULT" ] && { echo "mhl-pr: on the default branch — create a feature branch first" >&2; exit 1; }
+[ -n "$(git -C "$REPO_DIR" status --porcelain)" ] && { echo "mhl-pr: uncommitted changes" >&2; exit 1; }
+git -C "$REPO_DIR" push -u origin "$BR" >/dev/null
+BACKEND=$(git -C "$REPO_DIR" config --get mhl.prBackend || echo github)
+case "$BACKEND" in
+  github)
+    if [ -n "$BODY" ]; then gh pr create --title "$TITLE" --body-file "$BODY"; else gh pr create --title "$TITLE" --fill; fi ;;
+  *) echo "mhl-pr: unknown backend '$BACKEND' (set git config mhl.prBackend)" >&2; exit 1 ;;
+esac

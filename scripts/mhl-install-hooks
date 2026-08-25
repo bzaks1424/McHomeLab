@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Point both repos at the tracked git hooks (core.hooksPath). Idempotent.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+for repo in "$ROOT" "$ROOT/../McHomeLab-Inventory"; do
+  [ -d "$repo/.git" ] || continue
+  git -C "$repo" config core.hooksPath "$ROOT/scripts/git-hooks"
+  echo "hooks: $(basename "$(cd "$repo" && pwd)") -> $ROOT/scripts/git-hooks"
+done

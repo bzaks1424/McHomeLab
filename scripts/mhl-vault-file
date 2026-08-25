@@ -26,7 +26,23 @@ Safety properties (reviews of PR #6, 2026-08-25):
   file, never at a path the gate ignores. Nothing is ever clobbered.
 - ansible-vault and python come from the project venv, not PATH.
 
-Usage: mhl-vault-file <file> [--dry-run]
+Lifecycle of the plaintext original (Mike's requirement, 2026-08-25):
+  1. Durable home = Mike's password safe (the same escrow as the vault
+     password). Never a repo. The vaulted value in the inventory is the git
+     artifact.
+  2. ~/.mhl/pre-vault/<name>.<ts>.<pid> is RETAINED until verified:
+     `mhl-vault-file --purge <inventory.yml ...>` reads each backup's
+     plaintext values, decrypts the same keys from the given committed files,
+     and compares BYTE FOR BYTE; a backup is shredded only when every one of
+     its keys matches. Missing key, mismatch, decrypt failure, unknown source
+     file: refuse and name the key/file, never the value. Retention is tied
+     to verified fidelity, not to "it decrypts" and not to time.
+  3. `mhl-vault-file --list` shows pending backups; session_context reports
+     the pending count at every session start.
+  4. mhl-no-secrets fails on any *.pre-vault inside a tree; this tool refuses
+     to run if ~/.mhl/pre-vault is group/world accessible.
+
+Usage: mhl-vault-file <file> [--dry-run] | --list | --purge <inventory.yml ...>
 """
 import io
 import os
@@ -145,13 +161,115 @@ def read_text(path):
     return text
 
 
+def vault_blocks(text):
+    """Yield (key, ciphertext_body) for every inline !vault block in text."""
+    lines = text.split("\n"); i = 0
+    while i < len(lines):
+        bm = re.match(r"^(\s*(?:-\s*)*)([A-Za-z0-9_.]+): !vault \|", lines[i])
+        if bm:
+            ind = len(bm.group(1)); body = []; j = i + 1
+            while j < len(lines) and lines[j].strip() and len(lines[j]) - len(lines[j].lstrip()) > ind:
+                body.append(lines[j].strip()); j += 1
+            yield bm.group(2), "\n".join(body); i = j
+        else:
+            i += 1
+
+
+def backups():
+    if not os.path.isdir(BACKUP_DIR):
+        return []
+    mode = os.stat(BACKUP_DIR).st_mode & 0o077
+    if mode:
+        die(f"{BACKUP_DIR} is group/world accessible (mode {oct(os.stat(BACKUP_DIR).st_mode & 0o777)}); fix with chmod 700")
+    return sorted(os.path.join(BACKUP_DIR, f) for f in os.listdir(BACKUP_DIR))
+
+
+def cmd_list():
+    bs = backups()
+    if not bs:
+        print("no pending pre-vault backups"); return
+    now = time.time()
+    for b in bs:
+        st = os.stat(b)
+        print(f"{b}  {int((now - st.st_mtime) // 3600)}h old  mode {oct(st.st_mode & 0o777)}")
+    print(f"{len(bs)} pending — lifecycle: escrow the plaintext in Mike's password safe, then `mhl-vault-file --purge` once the vaulted values are verified")
+
+
+def cmd_purge(inventory_files):
+    """Shred a backup only when EVERY plaintext secret it holds compares
+    byte-for-byte with the decrypted !vault value for the same key in the
+    given committed inventory file. "It decrypts" is not enough — that proves
+    the password, not fidelity. Every ambiguous case refuses. Values are never
+    printed; only key names and paths."""
+    bs = backups()
+    if not bs:
+        print("no pending pre-vault backups"); return
+    if not inventory_files:
+        die("--purge needs the committed inventory file(s) to compare against, e.g. --purge ../McHomeLab-Inventory/hosts.yml")
+    inv_by_name = {}
+    for f in inventory_files:
+        if not os.path.isfile(f):
+            die(f"no such inventory file: {f}")
+        inv_by_name.setdefault(os.path.basename(f), []).append(f)
+    key_re = secret_key_regex()
+    verified, shredded = 0, 0
+    for b in bs:
+        base = os.path.basename(b)
+        m = re.match(r"^(?P<name>.+)\.\d{8}T\d{6}\.\d+$", base)
+        if not m or m.group("name") not in inv_by_name:
+            die(f"{b}: no inventory file named '{m.group('name') if m else base}' was given — refusing (pass the matching committed file)")
+        # decrypted values from the committed inventory, per key (a key may repeat)
+        inv_vals = {}
+        for f in inv_by_name[m.group("name")]:
+            for key, body in vault_blocks(read_text(f)):
+                r = subprocess.run([VAULT, "decrypt", "--output", "-"], input=body, capture_output=True, text=True, cwd=ANSIBLE_DIR)
+                if r.returncode:
+                    die(f"{f}: {key} does not decrypt under the current vault password — refusing (rotated password? re-vault first)")
+                inv_vals.setdefault(key, []).append(r.stdout)
+        # plaintext originals from the backup
+        expected = []
+        for lineno, line in enumerate(read_text(b).split("\n"), 1):
+            km = key_re.match(line)
+            if not km:
+                continue
+            parsed = raw_scalar(km.group("rest"), km.group("key"), lineno)
+            if parsed is None:
+                continue
+            expected.append((km.group("key"), parsed[0]))
+        if not expected:
+            die(f"{b}: contains no plaintext secret values — refusing (nothing to compare; inspect it by hand)")
+        for key, plain in expected:
+            cands = inv_vals.get(key)
+            if not cands:
+                die(f"{b}: key '{key}' has no !vault value in the inventory — refusing")
+            if not any(hmac_eq(plain, c) for c in cands):
+                die(f"{b}: key '{key}' does NOT match the decrypted inventory value — refusing; the inventory may hold a corrupted secret")
+            verified += 1
+    # Two-phase: every backup verified above; only now shred (no partial purge).
+    for b in bs:
+        size = os.path.getsize(b)
+        with open(b, "r+b") as fh:
+            fh.write(os.urandom(size)); fh.flush(); os.fsync(fh.fileno())
+        os.unlink(b); shredded += 1
+    print(f"verified {verified} value(s) byte-for-byte against the inventory; shredded {shredded} backup(s)")
+
+
+def hmac_eq(a, b):
+    import hmac
+    return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
+
+
 def main():
     args = sys.argv[1:]
+    if args and args[0] == "--list":
+        cmd_list(); return
+    if args and args[0] == "--purge":
+        cmd_purge(args[1:]); return
     dry = "--dry-run" in args
     if dry:
         args.remove("--dry-run")
     if len(args) != 1 or args[0].startswith("-"):
-        die("usage: mhl-vault-file <file> [--dry-run]")
+        die("usage: mhl-vault-file <file> [--dry-run] | --list | --purge <inventory.yml ...>")
     path = args[0]
     if os.path.isdir(path):
         die(f"{path} is a directory")
@@ -233,7 +351,9 @@ def main():
         except OSError:
             pass
         raise
-    print(f"vaulted {len(todo)} value(s) in {path}; original preserved at {backup} (0600, outside the repo) — shred it once the change is merged")
+    print(f"vaulted {len(todo)} value(s) in {path}; plaintext original preserved at {backup} (0600, outside any repo).\n"
+          f"Lifecycle: escrow the plaintext in the password safe; once the vaulted values are verified, run "
+          f"`mhl-vault-file --purge {path}` (decrypts every value first, then shreds). `--list` shows pending backups.")
 
 
 if __name__ == "__main__":

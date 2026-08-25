@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Ansible vault password client (ansible-core "*-client" convention).
+# Invoked as: mhl-vault-client --vault-id <label>; prints the password to stdout.
+# Installed to ~/.mhl/bin/ by the controller role; source of truth is this file.
+# Design: research/RESEARCH_SECRETS_RA.md §6.3. The 0600 mode check turns a
+# silent security regression into a red run. MHL_VAULT_PASS_FILE is the seam
+# for a future systemd LoadCredential= delivery (deferred, Q4).
+set -euo pipefail
+label="default"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --vault-id) label="$2"; shift 2 ;;
+    --vault-id=*) label="${1#*=}"; shift ;;
+    *) shift ;;
+  esac
+done
+case "$label" in
+  mhl) store="${MHL_VAULT_PASS_FILE:-$HOME/.mhl/vault/mhl.pass}" ;;
+  *) echo "mhl-vault-client: unknown vault-id '$label'" >&2; exit 1 ;;
+esac
+[ -r "$store" ] || { echo "mhl-vault-client: cannot read $store" >&2; exit 1; }
+perm=$(stat -c '%a' "$store")
+[ "$perm" = "600" ] || { echo "mhl-vault-client: $store is mode $perm, want 600" >&2; exit 1; }
+printf '%s' "$(cat "$store")"

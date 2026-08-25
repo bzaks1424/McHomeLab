@@ -1,26 +1,26 @@
 ---
-# roles/${role}/${role_action}_${type}_${manager}.yml
-#
-# I'm going to check if the role path exists as I might* not be the only person
-# using this - and I like good error messages.
-- name: "Import Best Task File {{ btf_role_role_action_type_manager }}"
+# Best Task File dispatch: roles/<role>/tasks/<action>_<type>_<manager>.yml
+# with progressively wider fallbacks. The plain <action>.yml is deliberately
+# NOT a candidate: it is the file that calls this dispatcher, and including it
+# again would recurse forever (hazard recorded 2026-08-24). A missing file is
+# a configuration error and fails loudly with the candidate list.
+- name: "Resolve Best Task File for {{ role_name }}/{{ role_action }}"
+  ansible.builtin.set_fact:
+    btf_resolved: "{{ lookup('ansible.builtin.first_found', btf_candidates, skip=true) }}"
+
+- name: "Show Best Task File resolution"
   when: btf_debug | default(false)
   ansible.builtin.debug:
-    msg: "{{ lookup('ansible.builtin.first_found', files) }}"
-  vars:
-    files:
-      - "{{ btf_role_role_action_type_manager }}"
-      - "{{ btf_role_role_action_type_all }}"
-      - "{{ btf_role_role_action_all_manager }}"
-      - "{{ btf_role_role_action_all_all }}"
-      - "{{ btf_role_role_action }}"
-- name: "Import Best Task File"
-  ansible.builtin.include_tasks: "{{ lookup('ansible.builtin.first_found', files) }}"
-  vars:
-    files:
-      - "{{ btf_role_role_action_type_manager }}"
-      - "{{ btf_role_role_action_type_all }}"
-      - "{{ btf_role_role_action_all_manager }}"
-      - "{{ btf_role_role_action_all_all }}"
-      - "{{ btf_role_role_action }}"
-###############################################################################################################################################################
+    msg: "{{ btf_resolved | default('NONE') }} (candidates: {{ btf_candidates }})"
+
+- name: "Fail when no Best Task File exists"
+  when: not btf_resolved
+  ansible.builtin.fail:
+    msg: >-
+      No task file for role '{{ role_name }}' action '{{ role_action }}'
+      (type '{{ hostvars[inventory_hostname].provision.type }}',
+      manager '{{ hostvars[inventory_hostname].provision.manager }}').
+      Looked for: {{ btf_candidates | join(', ') }}
+
+- name: "Import Best Task File {{ btf_resolved }}"
+  ansible.builtin.include_tasks: "{{ btf_resolved }}"

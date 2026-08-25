@@ -37,6 +37,9 @@
       {% for san in step_ca_cert_sans %}--san {{ san }} {% endfor %}
       --force
     stdin: "{{ step_ca_cert_provisioner_password }}"
+  # Only reached when needs-renewal said "renew" (rc 0) or the cert is absent,
+  # so a run of this task is always a real issuance.
+  changed_when: true
   delegate_to: localhost
   become: false
   when: _step_ca_renewal_check is failed or _step_ca_renewal_check.rc == 0

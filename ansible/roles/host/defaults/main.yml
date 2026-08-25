@@ -8,5 +8,5 @@ host_synology_nginx_restart_wait: 5
 # Appliance cert validation
 host_appliance_cert_issuer_org: "McHomeLab CA"
 # HP printer appliance defaults
-host_printer_pfx_password: "temppass"
+host_printer_pfx_password: "temppass"  # no-secret: transient PKCS#12 wrapper, deleted after upload
 host_printer_cert_activation_wait: 3

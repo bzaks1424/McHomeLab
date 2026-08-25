@@ -354,3 +354,7 @@ tags
 
 ### McHomeLab ###
 ansible/collections/
+
+### McHomeLab ###
+# pinned collections installed by `make deps` (derived; requirements.yml is the source)
+ansible/collections/

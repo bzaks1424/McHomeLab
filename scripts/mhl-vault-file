@@ -86,6 +86,8 @@ if os.path.realpath(sys.prefix) != os.path.realpath(VENV):
     die(f"must run under {VENV} (poetry install / make deps first)")
 
 import yaml  # noqa: E402
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+import mhl_secrets  # noqa: E402
 
 if not os.path.realpath(yaml.__file__).startswith(os.path.realpath(VENV)):
     die("PyYAML is not the venv's copy; refusing")
@@ -93,43 +95,7 @@ if not os.path.realpath(yaml.__file__).startswith(os.path.realpath(VENV)):
 
 # ---------------------------------------------------------------- helpers --
 def secret_key_regex():
-    """The single source of truth for 'what is a secret key' is mhl-no-secrets."""
-    gate = os.path.join(ROOT, "scripts", "mhl-no-secrets")
-    try:
-        src = open(gate, encoding="utf-8").read()
-    except OSError:
-        die(f"cannot read {gate}; refusing (the gate defines what a secret key is)")
-    m = re.search(r"^NAME_RE='(.*)'$", src, re.M)
-    w = m and re.search(r"\(\?i:([^)]*)\)", m.group(1))
-    if not w:
-        die("cannot find the secret-word list in scripts/mhl-no-secrets; refusing")
-    return re.compile(r"^(?:[A-Za-z0-9._]*_)?(?i:" + w.group(1) + r")$")
-
-
-def run_vault(args, stdin):
-    r = subprocess.run([VAULT, *args], input=stdin, capture_output=True, text=True, cwd=ANSIBLE_DIR)
-    if r.returncode:
-        tail = r.stderr.strip().splitlines()[-1] if r.stderr.strip() else "no stderr"
-        die(f"ansible-vault {args[0]} failed: {tail}")
-    return r.stdout
-
-
-def decrypt(body):
-    r = subprocess.run([VAULT, "decrypt", "--output", "-"], input=body, capture_output=True, text=True, cwd=ANSIBLE_DIR)
-    return None if r.returncode else r.stdout
-
-
-def encrypt(name, value):
-    if value == "":
-        die(f"{name}: empty value cannot be vaulted (ansible-vault refuses empty input); set a value or remove the key")
-    out = run_vault(["encrypt_string", "--encrypt-vault-id", VAULT_ID, "--stdin-name", name], value)
-    lines = [l for l in out.splitlines() if l.strip()]
-    if not lines or not lines[0].startswith(f"{name}: !vault |"):
-        die(f"unexpected encrypt_string output shape for {name}")
-    body = [l.strip() for l in lines[1:]]
-    if decrypt("\n".join(body)) != value:
-        die(f"round-trip mismatch for {name}; nothing written")
-    return body
+    return mhl_secrets.KEY_RE
 
 
 def read_text(path):
@@ -148,72 +114,63 @@ def read_text(path):
 
 
 def compose(text, what):
-    """Single-document node tree with BaseLoader (no implicit typing). Errors
-    are reported by line only; the offending text is never echoed."""
-    try:
-        docs = list(yaml.compose_all(io.StringIO(text), Loader=yaml.BaseLoader))
-    except yaml.MarkedYAMLError as e:
-        mark = e.problem_mark or e.context_mark
-        die(f"{what}: not valid YAML (line {mark.line + 1 if mark else '?'}); refusing")
-    except yaml.YAMLError:
-        die(f"{what}: not valid YAML; refusing")
-    if len(docs) != 1:
-        die(f"{what}: {len(docs)} YAML documents; exactly one is supported")
-    return docs[0]
+    """Single-document node tree via the shared model; errors name the line only."""
+    tree, err = mhl_secrets.compose(text)
+    if tree is None:
+        die(f"{what}: {err}; refusing")
+    return tree
 
 
-def walk(node, path=()):
-    """Yield (path, parent_mapping_node, key_node, value_node) for every mapping entry."""
-    if isinstance(node, yaml.MappingNode):
-        for k, v in node.value:
-            kp = path + (k.value if isinstance(k, yaml.ScalarNode) else "<complex-key>",)
-            yield kp, node, k, v
-            yield from walk(v, kp)
-    elif isinstance(node, yaml.SequenceNode):
-        for i, v in enumerate(node.value):
-            yield from walk(v, path + (f"[{i}]",))
+walk = mhl_secrets.walk
+
+
+def run_vault(args, stdin):
+    r = subprocess.run([VAULT, *args], input=stdin, capture_output=True, text=True, cwd=ANSIBLE_DIR)
+    if r.returncode:
+        tail = r.stderr.strip().splitlines()[-1] if r.stderr.strip() else "no stderr"
+        die(f"ansible-vault {args[0]} failed: {tail}")
+    return r.stdout
+
+
+def decrypt(body):
+    r = subprocess.run([VAULT, "decrypt", "--output", "-"], input=body, capture_output=True, text=True, cwd=ANSIBLE_DIR)
+    return None if r.returncode else r.stdout
+
+
+def encrypt(name, value):
+    if value == "":
+        die(f"{name}: empty value cannot be vaulted (ansible-vault refuses empty input)")
+    out = run_vault(["encrypt_string", "--encrypt-vault-id", VAULT_ID, "--stdin-name", name], value)
+    lines = [l for l in out.splitlines() if l.strip()]
+    if not lines or not lines[0].startswith(f"{name}: !vault |"):
+        die(f"unexpected encrypt_string output shape for {name}")
+    body = [l.strip() for l in lines[1:]]
+    if decrypt("\n".join(body)) != value:
+        die(f"round-trip mismatch for {name}; nothing written")
+    return body
+
+
+REMEDY = {
+    "block_scalar": "vault it by hand: ansible-vault encrypt_string --encrypt-vault-id mhl --stdin-name <key> < value-file, then paste the block",
+    "multiline": "put the value on one line (or vault it by hand from a file)",
+    "flow": "rewrite the flow mapping { } as a block mapping",
+    "tag": "remove the explicit tag (values are vaulted as strings)",
+    "alias": "replace the alias/anchor with a literal value",
+    "complex_key": "use a plain `key: value` line",
+    "empty_quoted": "set a value or remove the key (ansible-vault refuses empty input)",
+}
 
 
 def secret_leaves(tree, key_re, text):
-    """Ordered list of (path, key_node, value_node) for plain/quoted scalar
-    values of secret-named keys in BLOCK mappings. Anything secret-named that
-    is not such a leaf is refused (block scalar, flow context, collection,
-    alias, tag, complex key)."""
-    lines = text.split("\n")
+    """Vaultable (path, key_node, value_node) leaves. Any class the gate FAILs on
+    and the tool cannot fix is refused loudly with its remedy — the gate and the
+    tool share mhl_secrets, so 'gate red, tool exit 0' cannot happen."""
     out = []
-    for path, parent, k, v in walk(tree):
-        if not isinstance(k, yaml.ScalarNode) or not key_re.match(k.value):
-            continue
-        where = f"line {k.start_mark.line + 1}: '{k.value}'"
-        if parent.flow_style:
-            die(f"{where} is inside a flow mapping ({{ }}); rewrite it as a block mapping first")
-        if isinstance(v, (yaml.MappingNode, yaml.SequenceNode)):
-            continue  # a secret-named key holding a collection (e.g. `credentials:` block) is fine
-        if not isinstance(v, yaml.ScalarNode):
-            die(f"{where}: unsupported node type")
-        if v.tag == "!vault":
-            continue
-        if v.tag != "tag:yaml.org,2002:str" and v.tag != "tag:yaml.org,2002:null":
-            die(f"{where}: explicitly tagged value ({v.tag}); not supported")
-        if v.value == "":
-            if v.style is None:
-                continue  # `password:` with no value — nothing to vault (gate reports it separately)
-            die(f"{where}: empty quoted value cannot be vaulted (ansible-vault refuses empty input); set a value or remove the key")
-        # BaseLoader reports `!!str x` with the same tag as plain `x`, and the node's
-        # start mark includes the tag: detect an explicit tag from the raw source text.
-        raw = lines[v.start_mark.line][v.start_mark.column:v.end_mark.column] if v.start_mark.line == v.end_mark.line else ""
-        if raw.startswith("!"):
-            die(f"{where}: explicitly tagged value; not supported")
-        if v.style in ("|", ">"):
-            die(f"{where} is a block scalar; vault it by hand with "
-                f"`ansible-vault encrypt_string --encrypt-vault-id {VAULT_ID} --stdin-name {k.value} < value-file`")
-        if v.start_mark.line != v.end_mark.line and v.style not in ('"', "'"):
-            die(f"{where}: multi-line plain scalar; not supported")
-        if v.start_mark.line != k.start_mark.line:
-            die(f"{where}: value does not start on the key's line; not supported")
-        if v.value.startswith("{{"):
-            continue  # a Jinja reference is not a secret
-        out.append((path, k, v))
+    for f in mhl_secrets.classify(text, tree):
+        if f.cls in mhl_secrets.TOOL_REFUSES:
+            die(f"line {f.line}: '{f.key}' [{f.cls}] cannot be vaulted by this tool — {REMEDY[f.cls]}")
+        if f.cls == "plain":
+            out.append((f.path, f.key_node, f.value_node))
     return out
 
 

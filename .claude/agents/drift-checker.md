@@ -10,7 +10,7 @@ hooks:
     - matcher: "Bash"
       hooks:
         - type: command
-          command: "bash /home/mmcdonnell/workspace/McHomeLab/.claude/hooks/guard_bash.sh"
+          command: "bash $HOME/.mhl/hooks/guard_bash.sh"
 ---
 You check drift; you never fix it. Allowed: `ansible-playbook … --check --diff`,
 `make render`, `docker --context <host> ps|inspect|logs`, `docker compose config`,

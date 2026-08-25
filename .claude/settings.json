@@ -5,15 +5,21 @@
       "Bash(git push * main)",
       "Bash(git push --force *)",
       "Bash(git push -f *)",
+      "Bash(git push --mirror *)",
       "Bash(git reset --hard *)",
       "Bash(git filter-repo *)",
+      "Bash(rm -rf *)",
+      "Bash(sudo rm *)",
+      "Read(//home/mmcdonnell/.mhl/vault/**)",
+      "Read(//home/mmcdonnell/.mhl/hooks/**)",
+      "Read(//home/mmcdonnell/.mhl/archive/**)",
+      "Read(//home/mmcdonnell/.mhl/pre-vault/**)",
       "Edit(//home/mmcdonnell/.mhl/**)",
       "Write(//home/mmcdonnell/.mhl/**)",
       "Edit(//home/mmcdonnell/workspace/McHomeLab/archive/**)",
       "Write(//home/mmcdonnell/workspace/McHomeLab/archive/**)"
     ],
     "ask": [
-      "Bash(ansible-playbook *)",
       "Bash(git commit *)",
       "Bash(git push *)",
       "Bash(gh pr create *)",
@@ -21,32 +27,35 @@
       "Bash(gh repo *)",
       "Bash(gh api *)",
       "Bash(ansible-vault *)",
-      "Bash(scripts/mhl-vault-file *)"
+      "Bash(scripts/mhl-vault-file *)",
+      "Bash(scripts/mhl-install-hooks*)",
+      "Bash(scripts/mhl-pr *)"
     ],
     "allow": [
-      "Bash(make validate)", "Bash(make lint)", "Bash(make render*)", "Bash(make syntax)", "Bash(make no-secrets*)", "Bash(make deps)", "Bash(make check)",
+      "Bash(make validate)", "Bash(make lint)", "Bash(make render*)", "Bash(make syntax)", "Bash(make no-secrets*)", "Bash(make hooks)", "Bash(make deps)", "Bash(make check)",
       "Bash(scripts/hooks/test_hooks.sh)", "Bash(scripts/mhl-no-secrets *)",
       "Bash(ansible-playbook * --check *)", "Bash(ansible-inventory *)", "Bash(ansible-doc *)", "Bash(ansible-galaxy collection list*)",
       "Bash(ansible localhost -m debug *)", "Bash(ansible * -m setup*)", "Bash(ansible * -m ping*)",
-      "Bash(git status*)", "Bash(git diff*)", "Bash(git log*)", "Bash(git show*)", "Bash(git branch*)", "Bash(git checkout -b *)", "Bash(git switch *)", "Bash(git add *)", "Bash(git fetch*)", "Bash(git pull*)", "Bash(git stash*)",
+      "Bash(git status*)", "Bash(git diff*)", "Bash(git log*)", "Bash(git show*)", "Bash(git branch*)", "Bash(git checkout -b *)", "Bash(git switch *)", "Bash(git add *)", "Bash(git fetch*)", "Bash(git pull*)", "Bash(git stash*)", "Bash(git rev-parse*)", "Bash(git config --get *)", "Bash(git worktree *)",
       "Bash(gh pr view *)", "Bash(gh pr list*)", "Bash(gh pr status*)", "Bash(gh auth status*)",
       "Bash(ssh * \"docker ps*)", "Bash(ssh * \"docker logs*)", "Bash(ssh * \"docker inspect*)", "Bash(ssh * \"docker compose ls*)", "Bash(ssh * \"docker compose ps*)",
-      "Bash(ssh * \"cat *)", "Bash(ssh * \"ls *)", "Bash(ssh * \"systemctl status*)", "Bash(ssh * \"journalctl *)", "Bash(ssh * \"df *)", "Bash(ssh * \"grep *)",
+      "Bash(ssh * \"cat /opt/*)", "Bash(ssh * \"ls *)", "Bash(ssh * \"systemctl status*)", "Bash(ssh * \"journalctl *)", "Bash(ssh * \"df *)", "Bash(ssh * \"grep *)",
       "Bash(docker --context * ps*)", "Bash(docker --context * logs*)", "Bash(docker --context * inspect*)", "Bash(docker --context * compose ps*)", "Bash(docker compose -f * config*)",
-      "Bash(curl -s*)", "Bash(curl -k*)", "Bash(curl -sk*)", "Bash(step ca health*)", "Bash(step certificate inspect*)",
+      "Bash(curl -sf https://*)", "Bash(curl -sk https://*)", "Bash(step ca health*)", "Bash(step certificate inspect*)",
       "Bash(unifly * list*)", "Bash(unifly * show*)", "Bash(unifly --help*)",
-      "Bash(yamllint *)", "Bash(ansible-lint *)", "Bash(jq *)", "Bash(python3 -c *)", "Bash(cat *)", "Bash(ls *)", "Bash(grep *)", "Bash(find *)", "Bash(wc *)", "Bash(head *)", "Bash(tail *)", "Bash(sed -n *)", "Bash(diff *)", "Bash(stat *)",
-      "Read(//home/mmcdonnell/workspace/McHomeLab-Inventory/**)", "Read(//home/mmcdonnell/.mhl/**)", "Read(//tmp/claude-1000/**)",
+      "Bash(yamllint *)", "Bash(ansible-lint *)", "Bash(jq *)", "Bash(ls *)", "Bash(grep *)", "Bash(find *)", "Bash(wc *)", "Bash(head *)", "Bash(tail *)", "Bash(sed -n *)", "Bash(diff *)", "Bash(stat *)",
+      "Bash(bash /media/Backups/claude/tools/check-inbox.sh mchomelab*)",
+      "Read(//home/mmcdonnell/workspace/McHomeLab-Inventory/**)", "Read(//home/mmcdonnell/.mhl/registry.json)", "Read(//home/mmcdonnell/.mhl/*/**)", "Read(//tmp/claude-1000/**)", "Read(//media/Backups/claude/**)",
       "WebFetch(domain:docs.ansible.com)", "WebFetch(domain:code.claude.com)", "WebFetch(domain:github.com)", "WebFetch(domain:raw.githubusercontent.com)", "WebSearch"
     ]
   },
   "hooks": {
-    "SessionStart": [{"hooks": [{"type": "command", "command": "bash /home/mmcdonnell/workspace/McHomeLab/.claude/hooks/session_context.sh", "timeout": 30, "statusMessage": "Injecting lab state"}]}],
+    "SessionStart": [{"hooks": [{"type": "command", "command": "bash $HOME/.mhl/hooks/session_context.sh", "timeout": 30, "statusMessage": "Injecting lab state"}]}],
     "PreToolUse": [
-      {"matcher": "Write|Edit|NotebookEdit", "hooks": [{"type": "command", "command": "bash /home/mmcdonnell/workspace/McHomeLab/.claude/hooks/guard_writes.sh", "timeout": 10}]},
-      {"matcher": "Bash", "hooks": [{"type": "command", "command": "bash /home/mmcdonnell/workspace/McHomeLab/.claude/hooks/guard_bash.sh", "timeout": 10}]}
+      {"matcher": "Write|Edit|NotebookEdit", "hooks": [{"type": "command", "command": "bash $HOME/.mhl/hooks/guard_writes.sh", "timeout": 10}]},
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "bash $HOME/.mhl/hooks/guard_bash.sh", "timeout": 10}]}
     ],
-    "PostToolUse": [{"matcher": "Write|Edit", "hooks": [{"type": "command", "command": "bash /home/mmcdonnell/workspace/McHomeLab/.claude/hooks/check_edit.sh", "timeout": 60}]}],
-    "Stop": [{"hooks": [{"type": "command", "command": "bash /home/mmcdonnell/workspace/McHomeLab/.claude/hooks/stop_gate.sh", "timeout": 400, "statusMessage": "make validate + incident + memory gate"}]}]
+    "PostToolUse": [{"matcher": "Write|Edit", "hooks": [{"type": "command", "command": "bash $HOME/.mhl/hooks/check_edit.sh", "timeout": 60}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "bash $HOME/.mhl/hooks/stop_gate.sh", "timeout": 400, "statusMessage": "make validate + incident + memory gate"}]}]
   }
 }

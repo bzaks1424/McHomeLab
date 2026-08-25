@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
-# Point both repos at the tracked git hooks (core.hooksPath). Idempotent.
+# Install governance from a checked-out McHomeLab into the live locations:
+#   ~/.mhl/hooks/*.sh          <- .claude/hooks/*.sh   (Claude Code hooks; settings.json points here)
+#   core.hooksPath (both repos) -> scripts/git-hooks     (git pre-push guard)
+# Run from MAIN after a governance PR merges (also done by the controller role).
+# Branch edits to .claude/hooks change nothing until installed — by design.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BR=$(git -C "$ROOT" branch --show-current 2>/dev/null || echo "?")
+[ "$BR" = "main" ] || [ "${MHL_INSTALL_FROM_BRANCH:-}" = "1" ] || { echo "mhl-install-hooks: refusing to install from branch '$BR' (set MHL_INSTALL_FROM_BRANCH=1 to override for testing)" >&2; exit 1; }
+install -d -m 700 "$HOME/.mhl/hooks"
+for f in "$ROOT"/.claude/hooks/*.sh; do install -m 700 "$f" "$HOME/.mhl/hooks/$(basename "$f")"; done
+echo "hooks: installed $(ls "$ROOT"/.claude/hooks/*.sh | wc -l) scripts to ~/.mhl/hooks (from $BR @ $(git -C "$ROOT" rev-parse --short HEAD))"
 for repo in "$ROOT" "$ROOT/../McHomeLab-Inventory"; do
-  [ -d "$repo/.git" ] || continue
+  git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || continue   # works for worktrees too
   git -C "$repo" config core.hooksPath "$ROOT/scripts/git-hooks"
-  echo "hooks: $(basename "$(cd "$repo" && pwd)") -> $ROOT/scripts/git-hooks"
+  echo "git:   $(basename "$(cd "$repo" && pwd)") core.hooksPath -> $ROOT/scripts/git-hooks"
 done

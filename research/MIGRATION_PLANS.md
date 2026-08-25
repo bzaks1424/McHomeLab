@@ -1,7 +1,8 @@
 # Migration plans — major upgrades held back from the 2026-08-24 backlog drain
 
-**Status (2026-08-24 evening):** §0 EXECUTED (both), §2 recyclarr EXECUTED (8.7.1,
-live), §1 homepage still a plan. WUD outstanding: homepage v2 + apt-cacher-ng digest. Each plan follows the pinned-fleet discipline: one tag edit in
+**Status (2026-08-24 night):** ALL EXECUTED — §0 (both), §1 homepage v2.1.2 (auth gate
+left OFF by decision), §2 recyclarr 8.7.1. WUD outstanding: only apt-cacher-ng's
+floating digest (§3, deliberately left). Each plan follows the pinned-fleet discipline: one tag edit in
 `hosts.yml`, one full `site.yml`, verify, revert the tag to roll back.
 
 ---
@@ -82,6 +83,10 @@ secrets. Note the docs' warning: no rate limiting on the login POST.
 5. Rollback: revert the tag (and the env block) → `site.yml`.
 
 **Blast radius:** one container on util; nothing else references homepage.
+
+**EXECUTED 2026-08-24** without the auth gate (user decision). Container healthy,
+clean log, every widget populating; the `whatsupdocker` widget on the WUD tile
+renders counts under v2 (it showed nothing under v1.10.1).
 
 ---
 

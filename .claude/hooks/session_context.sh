@@ -13,6 +13,7 @@ ctx() {
   else echo "installed hooks MISSING (~/.mhl/hooks) — governance is not active; run scripts/mhl-install-hooks from main"; fi
   op=$(grep -lE '^status:[[:space:]]*open' "$INV"/incidents/INCIDENT-*.md 2>/dev/null | wc -l); echo "open incidents: $op"
   [ -r "$HOME/.mhl/vault/mhl.pass" ] && echo "vault: password file present" || echo "vault: MISSING ~/.mhl/vault/mhl.pass — restore from Mike's password safe"
+  pv=$(ls "$HOME/.mhl/pre-vault" 2>/dev/null | wc -l); [ "$pv" -gt 0 ] && echo "pre-vault: $pv plaintext backup(s) pending — escrow, verify, then scripts/mhl-vault-file --purge <inventory>"
   echo "share inbox: re-arm the 15-minute Monitor on /media/Backups/claude/tools/check-inbox.sh mchomelab (see memory)."
   echo "Binding: CLAUDE.md — no change to the lab without a committed role/inventory change landed via PR; reads are free; site.yml applies only from a committed tree; emergencies need incidents/INCIDENT-<date>-<slug>.md; make validate must be green before you stop."
 }

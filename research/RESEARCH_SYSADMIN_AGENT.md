@@ -639,3 +639,20 @@ never deletes a backup without an incident record or a PR.
 by `site.yml`. The two exceptions are not derived and are created by the
 controller role from inventory: `~/.mhl/vault/mhl.pass` (escrowed in Mike's
 password safe) and `~/.mhl/bin/mhl-vault-client`.
+
+### 2026-08-25 — first end-to-end `/drift` run (read-only, forked drift-checker under dontAsk)
+**No configuration drift between the committed inventory and the live fleet.** Every apparent
+difference traced to the checking tooling, now Phase 3 items:
+- **F1 (medium, `roles/host`)** check mode cannot pass an appliance host: `get_certificate` and the DSM
+  `uri` calls are skipped under `--check`, downstream tasks then fail, and `serial: 1` means media/unifi/
+  printer are never evaluated. Fix: `check_mode: false` on the read-only probes.
+- **F2 (medium, `tests/render.yml`, introduced in PR #5)** `include_vars` of `roles/service/defaults/main.yml`
+  outranks inventory vars, so the render used `traefik:v3.6`/`gluetun:v3` instead of the pinned
+  `v3.7.11`/`v3.41.3`. The deployed files match the inventory; the render did not. Fix: load defaults with
+  lower precedence (play `vars:` from the defaults file) and assert `traefik_image` equals the inventory value.
+- **F3 (low, `/drift` skill)** `docker compose config --hash` is not comparable with the
+  `com.docker.compose.config-hash` label for `network_mode: service:*` containers (compose resolves to
+  `container:<id>` before hashing). Use a text diff of rendered vs deployed compose for those.
+- F4 `~/.mhl/synology/chain.pem` mode 0664 vs declared 0644 (controller-local, fixed by any run).
+- F5 stale `known_hosts` entry for alias `unifi` on the controller (from the reprovision).
+- F6 leftover `util:/opt/docker/compose/diun-watch.yml` — already on the codified-cleanup list (Q2).

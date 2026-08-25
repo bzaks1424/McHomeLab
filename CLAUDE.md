@@ -5,12 +5,21 @@ These are non-negotiable. Hooks enforce what a command or path alone can decide
 **Live enforcement = user-scope hooks (`~/.claude/settings.json`, Mike's file;
 reference block `scripts/hooks/user-settings-hooks.json`) running the installed
 copies in `~/.mhl/hooks/`**, populated from `main` by `scripts/mhl-install-hooks`
-after a governance PR merges. Editing `.claude/hooks/*` on a branch changes
-nothing until then; `make hooks-installed` verifies what is actually enforcing.
-Files that define what runs unprompted or what the guards check (`.claude/*`
-other than `hooks/`, `Makefile`, the harness, git hooks, installer, `.mcp.json`)
-are not editable by the agent. `.claude/settings.json` and `CLAUDE.md` are
-edited only after Mike runs `touch ~/.mhl/approvals/<file>` (one-shot, 30 min).
+after a governance PR merges. They run in every session on this machine and
+decide by command text and target path, never by session cwd. Known limit
+(verified 2.1.245): a project-local `settings(.local).json` with
+`disableAllHooks: true` DOES override user-scope hooks; the Bash guard denies
+shell writes to those files and the session/stop gates check every scope for
+the flag — only a root-owned managed policy file removes the class entirely.
+Editing `.claude/hooks/*` on a branch changes nothing until installed;
+`make hooks-installed` verifies what is actually enforcing. Files that define
+what runs unprompted or what the guards check (`.claude/*` other than `hooks/`,
+`CLAUDE.md`, `Makefile`, the harness, git hooks, installer, the secrets gate,
+lint configs, the CI workflow, `.mcp.json`) are edited only after Mike runs
+`touch ~/.mhl/approvals/<file>` (one-shot, 30 min) and still land via PR. A
+read-only command whose text merely mentions a governance path may be denied
+by the Bash guard — write it to a file in the scratchpad and run that, or use
+`cat`/`grep`.
 Fleet-touching commands are always invoked directly (never via `make`), so the
 Bash guard sees every real command.
 The global `~/.claude/CLAUDE.md` still applies; this file is more specific.

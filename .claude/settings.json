@@ -1,5 +1,5 @@
 {
-  "_comment": "Permissions only. Hook definitions live in USER scope (~/.claude/settings.json; reference: scripts/hooks/user-settings-hooks.json) so a project-local settings.local.json cannot disable them. `make hooks-installed` verifies the live wiring.",
+  "_comment": "Permissions only. Hook definitions live in USER scope (~/.claude/settings.json; reference: scripts/hooks/user-settings-hooks.json). CAVEAT: a project-local settings(.local).json with disableAllHooks:true overrides user-scope hooks (verified 2.1.245); guard_bash denies shell writes to it, and session_context/stop_gate/make hooks-installed check every scope for it. No allow rule may permit a command that can write a file (curl -o, tee, redirects): curl is deliberately absent so it prompts.",
   "permissions": {
     "defaultMode": "default",
     "deny": [
@@ -36,7 +36,7 @@
     ],
     "allow": [
       "Bash(make validate)", "Bash(make ci)", "Bash(make lint)", "Bash(make render*)", "Bash(make syntax)", "Bash(make no-secrets*)", "Bash(make hooks)", "Bash(make hooks-installed)", "Bash(make deps)", "Bash(make check)",
-      "Bash(scripts/hooks/test_hooks.sh)", "Bash(scripts/mhl-no-secrets *)",
+      "Bash(scripts/hooks/test_hooks.sh)", "Bash(scripts/mhl-no-secrets *)", "Bash(scripts/tests/secrets_matrix.sh)",
       "Bash(cd /home/mmcdonnell/workspace/McHomeLab/ansible)",
       "Bash(../.venv/bin/ansible-playbook site.yml -i ../../McHomeLab-Inventory/hosts.yml --check --diff)",
       "Bash(ansible-playbook * --check *)", "Bash(ansible-inventory *)", "Bash(ansible-doc *)", "Bash(ansible-galaxy collection list*)",
@@ -44,7 +44,7 @@
       "Bash(git status*)", "Bash(git diff*)", "Bash(git log*)", "Bash(git show*)", "Bash(git branch*)", "Bash(git checkout -b *)", "Bash(git switch *)", "Bash(git add *)", "Bash(git fetch*)", "Bash(git pull*)", "Bash(git stash*)", "Bash(git rev-parse*)", "Bash(git config --get *)", "Bash(git worktree *)",
       "Bash(gh pr view *)", "Bash(gh pr list*)", "Bash(gh pr status*)", "Bash(gh auth status*)",
       "Bash(docker --context * ps*)", "Bash(docker --context * logs*)", "Bash(docker --context * inspect*)", "Bash(docker --context * compose ps*)", "Bash(docker compose -f * config*)",
-      "Bash(curl -sf https://*)", "Bash(step ca health*)", "Bash(step certificate inspect*)",
+      "Bash(step ca health*)", "Bash(step certificate inspect*)",
       "Bash(unifly * list*)", "Bash(unifly * show*)", "Bash(unifly --help*)",
       "Bash(yamllint *)", "Bash(ansible-lint *)", "Bash(jq *)", "Bash(ls *)", "Bash(grep *)", "Bash(find *)", "Bash(wc *)", "Bash(head *)", "Bash(tail *)", "Bash(sed -n *)", "Bash(diff *)", "Bash(stat *)",
       "Bash(bash /media/Backups/claude/tools/check-inbox.sh mchomelab*)",

@@ -11,11 +11,9 @@ command -v jq >/dev/null 2>&1 || { echo "guard_bash: jq missing — refusing to 
 ROOT=$(realpath -m "${MHL_REPO:-$HOME/workspace/McHomeLab}")
 INV=$(realpath -m "${MHL_INVENTORY:-$HOME/workspace/McHomeLab-Inventory}")
 PAYLOAD=$(cat) || exit 2
-# Scope: these hooks are wired from USER settings, so they run in every Claude
-# session on this machine. They act only when the session is inside McHomeLab
-# or the inventory; elsewhere they allow everything (review round-3 addendum).
-CWD=$(printf '%s' "$PAYLOAD" | jq -r '.cwd // ""')
-case "$CWD" in "$ROOT"|"$ROOT"/*|"$INV"|"$INV"/*) ;; *) exit 0 ;; esac
+# This hook ALWAYS runs (user scope = every session on the machine) and decides
+# by COMMAND TEXT, never by session cwd: a cwd gate is a one-`cd` disarm
+# (review round-3). Lab-host and governance-path rules are unconditional.
 CMD=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // ""') || exit 2
 [ -z "$CMD" ] && exit 0
 

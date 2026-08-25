@@ -1,0 +1,18 @@
+---
+# Pinned collection set. Exact pins are the lock file — ansible-core has no
+# lockfile feature (verified 2026-08-24 against 2.19–2.21 changelogs).
+# Install: make deps   (ansible-galaxy collection install -r … -p ./collections --force)
+# Bump deliberately, in its own PR, with `make validate` green.
+collections:
+  - name: "ansible.posix"
+    version: "==2.1.0"
+  - name: "community.crypto"
+    version: "==3.0.5"
+  - name: "community.docker"
+    version: "==4.8.2"
+  - name: "community.general"
+    version: "==11.4.1"
+  - name: "community.vmware"
+    version: "==5.10.0"
+  - name: "vmware.vmware"
+    version: "==2.5.0"

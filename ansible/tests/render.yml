@@ -1,0 +1,64 @@
+---
+# Offline render test: for every host that declares services, template the
+# compose stack on the controller and run `docker compose config -q`.
+# Formalises the scratch pattern used during the WUD/recyclarr work
+# (research/RESEARCH_SYSADMIN_AGENT.md §3 A3, item C3).
+#
+# Deliberately does NOT include the service role: include_role executes the
+# role's meta dependencies (docker -> apt -> ...) against the render host, which
+# on 2026-08-25 tried to modify /etc/apt on the controller. The role's vars and
+# templates are loaded directly instead, so nothing here can mutate anything
+# but the render directory.
+- name: "Initialize registry for render"
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: "Initialize registry"
+      ansible.builtin.include_role:
+        name: registry
+        tasks_from: init
+
+- name: "Render compose stacks"
+  hosts: all
+  gather_facts: false
+  connection: local
+  vars:
+    service_role_dir: "{{ playbook_dir }}/../roles/service"
+    service_render_root: "{{ lookup('env', 'MHL_RENDER_DIR') | default('/tmp/mhl-render', true) }}"
+    service_render_dir: "{{ service_render_root }}/{{ inventory_hostname }}"
+  tasks:
+    - name: "Render services for {{ inventory_hostname }}"
+      when: hostvars[inventory_hostname].services is defined
+      block:
+        - name: "Load service role defaults and vars"
+          ansible.builtin.include_vars:
+            file: "{{ item }}"
+          loop:
+            - "{{ service_role_dir }}/defaults/main.yml"
+            - "{{ service_role_dir }}/vars/main.yml"
+
+        - name: "Create render directory"
+          ansible.builtin.file:
+            path: "{{ service_render_dir }}"
+            state: directory
+            mode: "0755"
+
+        - name: "Render docker-compose.yml"
+          ansible.builtin.template:
+            src: "{{ service_role_dir }}/templates/docker-compose.yml.j2"
+            dest: "{{ service_render_dir }}/docker-compose.yml"
+            mode: "0644"
+
+        - name: "Render traefik external routes config"
+          when:
+            - "'traefik' in service_infra_services"
+            - "service_infra_services.traefik.config.external_routes is defined"
+          ansible.builtin.template:
+            src: "{{ service_role_dir }}/templates/traefik-external.yml.j2"
+            dest: "{{ service_render_dir }}/traefik-external.yml"
+            mode: "0644"
+
+        - name: "Validate rendered compose file"
+          ansible.builtin.command:
+            argv: ["docker", "compose", "-f", "{{ service_render_dir }}/docker-compose.yml", "config", "-q"]
+          changed_when: false

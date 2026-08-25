@@ -161,8 +161,9 @@ Lookup order (first match wins):
   2. validate_vm_all.yml
   3. validate_all_vmware.yml
   4. validate_all_all.yml       ◄── catch-all
-  5. validate.yml               ◄── fallback
 ```
+
+There is deliberately no `validate.yml` fallback: that is the file calling the dispatcher, and including it again would recurse forever. If none of the four candidates exists the run fails with the candidate list.
 
 This means you can add support for a new hypervisor (e.g. Proxmox) by dropping in `validate_vm_proxmox.yml` and `provision_vm_proxmox.yml` — no changes to existing code. The same pattern extends to non-VM host types: `validate_appliance_synology.yml`, `configure_ipmi_idrac.yml`, etc.
 
@@ -174,7 +175,6 @@ This means you can add support for a new hypervisor (e.g. Proxmox) by dropping i
 | `validate_all_all.yml` | No-op (future API hosts, pre-existing hosts) |
 | `provision_vm_vmware.yml` | Create VM, boot env, install, cleanup |
 | `configure_all_all.yml` | SSH, OS, NFS, services, software |
-| `configure_container_docker.yml` | Docker container lifecycle |
 
 ## Services
 
@@ -286,9 +286,23 @@ ansible-playbook ansible/site.yml -i /path/to/hosts.yml -v
 # Dry run — see what would change without touching anything
 ansible-playbook ansible/site.yml -i /path/to/hosts.yml --check -v
 
-# Limit to a single host (must include localhost for initialization)
-ansible-playbook ansible/site.yml -i /path/to/hosts.yml --limit myhost,localhost -v
+# Do NOT use --limit: hosts import from each other through the registry.
 ```
+
+### Validation
+
+`make validate` is the green/red check — "done" means it passed:
+
+| Target | What it runs |
+|---|---|
+| `make deps` | `ansible-galaxy collection install -r ansible/requirements.yml -p ansible/collections` (exact pins; this *is* the lock file) |
+| `make lint` | `yamllint` + `ansible-lint --profile production` |
+| `make syntax` | `--syntax-check` of the render playbook (`site.yml` uses runtime hostvars for its host list and cannot be syntax-checked) |
+| `make render` | `ansible/tests/render.yml`: templates every compose stack offline into `$MHL_RENDER_DIR` (default `/tmp/mhl-render`) and runs `docker compose config -q` — never contacts a host |
+| `make no-secrets` | `scripts/mhl-no-secrets`: no plaintext secret values in this repo (`make no-secrets-all` also scans the inventory repo) |
+| `make check` | `--check` run of `site.yml` against the mock inventory |
+
+Secrets: `ansible/ansible.cfg` names vault-id `mhl`, whose password comes from `~/.mhl/bin/mhl-vault-client` (source: `scripts/mhl-vault-client`) reading a 0600 file at `~/.mhl/vault/mhl.pass`. See `research/RESEARCH_SECRETS_RA.md`.
 
 ## Adding a New Host
 

@@ -38,12 +38,12 @@
     port: "{{ host_validate_port }}"
     host: "{{ host_fqdn }}"
     search_regex: "OpenSSH"
-    delay: 2 # 2 second queries
-    timeout: 300 #5 minutes wait
+    delay: 2  # 2 second queries
+    timeout: 300  # 5 minutes wait
 - name: "The Handshake: Adding to known_hosts {{ host_fqdn }}"
   become: true
   become_user: "{{ ansible_user }}"
   ansible.builtin.known_hosts:
-    name: "{{ host_fqdn}}"
+    name: "{{ host_fqdn }}"
     key: "{{ lookup('pipe', 'ssh-keyscan -t ed25519 ' + host_fqdn) }}"
     state: present

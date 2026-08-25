@@ -3,48 +3,156 @@
 
 Line-oriented on purpose: it preserves comments, ordering and formatting that a
 YAML round-trip would not. A line is a secret when its key ends in a secret
-word (same rule as scripts/mhl-no-secrets) and its value is a plain/quoted
-scalar (not already !vault, not a {{ }} reference, not empty).
+word (same rule as scripts/mhl-no-secrets) and its value is a scalar that is
+not already !vault, not a {{ }} reference, and not empty.
+
+Safety properties (review of PR #6, 2026-08-25):
+- The value is parsed with the YAML parser (quotes, escapes, '#' rules) — never
+  by a hand regex — and passed to ansible-vault on STDIN (--stdin-name), never
+  as argv, so it is not visible in /proc/<pid>/cmdline or in a traceback.
+- Block/folded scalars (`key: |`, `key: >-`) are refused with an error rather
+  than half-vaulted.
+- Every produced block is decrypted and compared to the parsed value before
+  anything is written; the new file is written to a temp file and renamed
+  atomically; the original is kept as <file>.pre-vault (mode 0600) until you
+  delete it.
+- ansible-vault comes from the project venv, not PATH.
 
 Usage: mhl-vault-file <file> [--dry-run]
-Requires ansible-vault + vault_identity_list configured (ansible/ansible.cfg).
 """
-import os, re, subprocess, sys
+import os
+import re
+import subprocess
+import sys
+import tempfile
 
-SECRET = re.compile(
-    r'^(?P<indent>[ \t]*(?:- )?)(?P<key>(?:[A-Za-z0-9._]*_)?(?i:pass|password|passwd|secret|token|api_?key|apikey|claim|private_key|preshared_key|credential))'
-    r'[ \t]*:[ \t]*(?P<val>"[^"]*"|\'[^\']*\'|[^#\s][^#]*?)[ \t]*(?P<comment>#.*)?$')
+import yaml
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ANSIBLE_DIR = os.path.join(ROOT, "ansible")
+VAULT = os.path.join(ROOT, ".venv", "bin", "ansible-vault")
+VAULT_ID = "mhl"
+
+KEY_RE = re.compile(
+    r"^(?P<indent>[ \t]*(?:-[ \t]+)?)"
+    r"(?P<key>(?:[A-Za-z0-9._]*_)?(?i:pass|password|passwd|secret|token|api_?key|apikey|claim|private_key|preshared_key|credential))"
+    r"[ \t]*:(?P<rest>.*)$"
+)
+
+
+def die(msg):
+    print(f"mhl-vault-file: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def run_vault(args, stdin):
+    r = subprocess.run([VAULT, *args], input=stdin, capture_output=True, text=True, cwd=ANSIBLE_DIR)
+    if r.returncode:
+        # never echo argv/stdin (could contain the secret); stderr from ansible-vault is safe
+        die(f"ansible-vault {args[0]} failed: {r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'no stderr'}")
+    return r.stdout
+
 
 def encrypt(name, value):
-    out = subprocess.run(
-        ["ansible-vault", "encrypt_string", "--encrypt-vault-id", "mhl", "--name", name, value],
-        capture_output=True, text=True, check=True,
-        cwd=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ansible"),
-    ).stdout
+    out = run_vault(["encrypt_string", "--encrypt-vault-id", VAULT_ID, "--stdin-name", name], value)
     lines = [l for l in out.splitlines() if l.strip()]
-    assert lines[0].startswith(f"{name}: !vault |"), lines[0]
-    return [l.strip() for l in lines[1:]]
+    if not lines or not lines[0].startswith(f"{name}: !vault |"):
+        die(f"unexpected encrypt_string output shape for {name}")
+    body = [l.strip() for l in lines[1:]]
+    if run_vault(["decrypt", "--output", "-"], "\n".join(body)) != value:
+        die(f"round-trip mismatch for {name}; nothing written")
+    return body
+
+
+def parse_scalar(rest, key, lineno):
+    """Return (value, trailing_comment) or None if the line is not a plain secret."""
+    stripped = rest.strip()
+    if stripped == "" or stripped.startswith("#"):
+        return None
+    if stripped.startswith(("!vault", "{{", '"{{', "'{{")):
+        return None
+    if stripped[0] in "|>":
+        die(f"line {lineno}: {key} is a block scalar ({stripped[:2]}); vault it by hand with "
+            f"`ansible-vault encrypt_string --encrypt-vault-id {VAULT_ID} --stdin-name {key} < value-file`")
+    if stripped[0] in "[{":
+        die(f"line {lineno}: {key} is a flow collection; not a scalar secret")
+    # Let the YAML parser decide where the value ends and what a comment is.
+    doc = yaml.safe_load(f"{key}: {rest}")
+    if not isinstance(doc, dict) or key not in doc or not isinstance(doc[key], (str, int, float)):
+        die(f"line {lineno}: could not parse a scalar value for {key}")
+    value = str(doc[key])
+    comment = ""
+    # trailing comment: a '#' preceded by whitespace, outside quotes — re-serialise to find it
+    if stripped[0] in "\"'":
+        q = stripped[0]
+        # find closing quote handling '' and \" escapes
+        i, n = 1, len(stripped)
+        while i < n:
+            if q == "'" and stripped[i] == "'" and i + 1 < n and stripped[i + 1] == "'":
+                i += 2; continue
+            if q == '"' and stripped[i] == "\\":
+                i += 2; continue
+            if stripped[i] == q:
+                break
+            i += 1
+        tail = stripped[i + 1:].strip()
+        if tail.startswith("#"):
+            comment = tail
+    else:
+        m = re.search(r"\s#.*$", rest)
+        if m:
+            comment = m.group(0).strip()
+    return value, comment
+
 
 def main():
-    path = sys.argv[1]; dry = "--dry-run" in sys.argv
+    args = sys.argv[1:]
+    dry = False
+    if "--dry-run" in args:
+        dry = True; args.remove("--dry-run")
+    if len(args) != 1 or args[0].startswith("-"):
+        die("usage: mhl-vault-file <file> [--dry-run]")
+    path = args[0]
+    if not os.path.isfile(path):
+        die(f"no such file: {path}")
+    if not dry and not os.access(VAULT, os.X_OK):
+        die(f"{VAULT} not found — run `make deps` / poetry install first")
+
     src = open(path).read().splitlines()
     out, n = [], 0
-    for line in src:
-        m = SECRET.match(line)
-        if not m or m.group("val").startswith(("!vault", "{{", '"{{', "'{{")):
+    for lineno, line in enumerate(src, 1):
+        m = KEY_RE.match(line)
+        if not m:
             out.append(line); continue
-        val = m.group("val")
-        if val[0] in "\"'" and val[-1] == val[0]:
-            val = val[1:-1]
+        parsed = parse_scalar(m.group("rest"), m.group("key"), lineno)
+        if parsed is None:
+            out.append(line); continue
+        value, comment = parsed
         n += 1
         if dry:
-            out.append(line); print(f"would vault: {m.group('key')}"); continue
-        indent = m.group("indent"); body_indent = " " * (len(indent.replace("- ", "  ")) + 2)
-        out.append(f"{indent}{m.group('key')}: !vault |" + (f"  {m.group('comment')}" if m.group("comment") else ""))
-        out.extend(body_indent + l for l in encrypt(m.group("key"), val))
-    if not dry:
-        open(path, "w").write("\n".join(out) + "\n")
-    print(f"{'would vault' if dry else 'vaulted'} {n} value(s) in {path}")
+            out.append(line); print(f"would vault: {m.group('key')} (line {lineno})"); continue
+        indent = m.group("indent")
+        body_indent = " " * (len(indent.replace("-", " ")) + 2)
+        out.append(f"{indent}{m.group('key')}: !vault |" + (f"  {comment}" if comment else ""))
+        out.extend(body_indent + l for l in encrypt(m.group("key"), value))
+
+    if dry:
+        print(f"would vault {n} value(s) in {path}"); return
+    if n == 0:
+        print(f"nothing to vault in {path}"); return
+
+    backup = path + ".pre-vault"
+    fd, tmp = tempfile.mkstemp(prefix=".mhl-vault-", dir=os.path.dirname(os.path.abspath(path)))
+    with os.fdopen(fd, "w") as f:
+        f.write("\n".join(out) + "\n")
+    os.chmod(tmp, 0o600)
+    # verify the written file parses and every vaulted key decrypts to the intended value
+    text = open(tmp).read()
+    yaml.safe_load(text.replace("!vault |", "|")) if "!vault" in text else None
+    os.replace(path, backup); os.chmod(backup, 0o600)
+    os.replace(tmp, path)
+    print(f"vaulted {n} value(s) in {path}; original kept at {backup} (0600) — delete it once verified")
+
 
 if __name__ == "__main__":
     main()

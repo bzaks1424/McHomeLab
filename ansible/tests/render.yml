@@ -51,6 +51,7 @@
         - name: "Apply templated service role defaults (mirrors defaults/main.yml)"
           ansible.builtin.set_fact:
             service_secrets_dir: "{{ hostvars[inventory_hostname].service_secrets_dir | default(service_dir ~ '/secrets') }}"
+            service_traefik_dynamic_dir: "{{ hostvars[inventory_hostname].service_traefik_dynamic_dir | default(service_dir ~ '/traefik-dynamic') }}"
 
         - name: "Assert the inventory image pins survived"
           ansible.builtin.assert:

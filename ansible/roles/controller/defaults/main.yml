@@ -11,6 +11,8 @@ controller_credential_expiries: "{{ hostvars[inventory_hostname].credential_expi
 # Toolchain (Q12)
 controller_step_cli_version: "0.28.2"
 controller_step_cli_deb: "https://github.com/smallstep/cli/releases/download/v{{ controller_step_cli_version }}/step-cli_{{ controller_step_cli_version }}-1_amd64.deb"
+controller_step_cli_sha256: "4cd7d5dbab8b33163c2ab504eb448e8cf17a26c72814929d28a5d37a241d8c6a"
+controller_step_cli_download: "{{ controller_mhl_home }}/downloads/step-cli_{{ controller_step_cli_version }}_amd64.deb"
 controller_manage_docker_cli: true
 # unifly (UniFi CLI; read engine for governance/capture, write engine for the unifi role).
 # 0.10.0 fixes create --action block (0.9.x sent DROP, rejected by the Integration API).
@@ -28,5 +30,7 @@ controller_remote_api_hosts: >-
 # Declared in hosts.yml on the controller as vault_escrow_dir; unset = no escrow.
 controller_vault_escrow_dir: "{{ hostvars[inventory_hostname].vault_escrow_dir | default('') }}"
 controller_vault_escrow_minute: "17"
+# The escrow folder must sit on a mounted filesystem (never the local disk): first two path components.
+controller_vault_escrow_mount: "/{{ controller_vault_escrow_dir.split('/')[1:3] | join('/') }}"
 # -rti: recursive, times, itemized (no owner/perm/group — the destination is a shared export)
-controller_vault_escrow_cmd: "rsync -rti --delete {{ controller_mhl_home }}/vault/ {{ controller_vault_escrow_dir | quote }}/"
+controller_vault_escrow_cmd: "mountpoint -q {{ controller_vault_escrow_mount | quote }} && rsync -rti --delete {{ controller_mhl_home }}/vault/ {{ controller_vault_escrow_dir | quote }}/"

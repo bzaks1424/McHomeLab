@@ -11,7 +11,9 @@ def service_secret_entries(item):
 
 
 def secret_env_name(name, style_map, style):
-    st = style_map.get(style, style_map["generic"])
+    if style not in style_map:
+        raise ValueError(f"unknown secret_style {style!r} (known: {sorted(style_map)})")
+    st = style_map[style]
     return f"{st['prefix']}{name}{st['suffix']}"
 
 

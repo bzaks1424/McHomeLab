@@ -58,8 +58,14 @@ LIVE = {
 def test_policy_shape_canonicalises_live_json():
     assert mu.policy_shape(LIVE) == {
         "action": "block", "enabled": True, "source_zone_id": "i", "destination_zone_id": "d",
-        "destination_ports": ["22", "2376"], "logging": True,
+        "destination_filter_kind": "port", "destination_ports": ["22", "2376"], "logging": True,
     }
+
+
+def test_policy_shape_records_filter_kind():
+    ipf = dict(LIVE, destination={"zone_id": "d", "filter": {"kind": "ip_address", "ports": {"items": ["445"]}}})
+    assert mu.policy_shape(ipf)["destination_filter_kind"] == "ip_address"
+    assert mu.policy_shape({"destination": {"zone_id": "d", "filter": None}})["destination_filter_kind"] == ""
 
 
 def test_policy_shape_tolerates_null_filter_and_missing_keys():
@@ -75,4 +81,45 @@ def test_create_and_update_args():
     d2 = dict(d, destination_ports=[], logging=False, enabled=False)
     a2 = mu.create_args("P", d2, "desc")
     assert "--dst-port" not in a2 and "--logging" not in a2 and a2[a2.index("--enabled") + 1] == "false"
-    assert mu.update_args(d2) == []
+
+
+def test_update_args_refuses_to_clear_ports():
+    with pytest.raises(ValueError):
+        mu.update_args({"destination_ports": []})
+
+
+def test_patch_args_only_requested_keys():
+    d = {"enabled": False, "logging": True}
+    assert mu.patch_args(d, ["enabled"]) == ["--enabled", "false"]
+    assert mu.patch_args(d, ["logging", "enabled"]) == ["--enabled", "false", "--logging", "true"]
+    assert mu.patch_args(d, []) == []
+
+
+def test_write_appends_yes_and_stdin_is_closed_by_default_runner():
+    r = fake_runner({("firewall", "policies", "create", "--name", "P", "--yes"): (0, "", "")})
+    mu.Unifly("unifly", r).write("firewall", "policies", "create", "--name", "P")
+    assert r.calls[-1][-1] == "--yes"
+
+
+def test_list_json_refuses_empty_output():
+    r = fake_runner({("x", "list", "--all", "-o", "json"): (0, "", "")})
+    with pytest.raises(mu.UniflyError, match="empty output"):
+        mu.Unifly("unifly", r).list_json("x", "list")
+
+
+def mk(name, src, dst, origin="UserDefined", pid="p"):
+    return {"id": pid, "name": name, "origin": origin, "source": {"zone_id": src}, "destination": {"zone_id": dst}}
+
+
+def test_find_policy_matches_on_name_and_zones_user_defined_only():
+    pols = [mk("Allow All Traffic", "a", "b", "SystemDefined", "sys"), mk("Allow All Traffic", "i", "iot", pid="user"),
+            mk("X (Return)", "i", "iot", origin=None, pid="ret")]
+    assert mu.find_policy(pols, "Allow All Traffic", "i", "iot")["id"] == "user"
+    assert mu.find_policy(pols, "Allow All Traffic", "a", "b") is None      # system rule is never adopted
+    assert mu.find_policy(pols, "X (Return)", "i", "iot") is None            # auto companion (origin None)
+
+
+def test_find_policy_ambiguous_is_an_error():
+    pols = [mk("Dup", "i", "d", pid="1"), mk("Dup", "i", "d", pid="2")]
+    with pytest.raises(mu.AmbiguousMatch, match="2 user-defined"):
+        mu.find_policy(pols, "Dup", "i", "d")

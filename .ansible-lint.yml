@@ -6,6 +6,9 @@
 project_dir: .
 
 profile: production
+# In-repo module (ansible/library) — lint must resolve it whichever paths are passed.
+mock_modules:
+  - mhl_unifi_firewall_policy
 
 skip_list:
   - yaml[line-length]

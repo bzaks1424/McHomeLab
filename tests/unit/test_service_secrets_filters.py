@@ -36,5 +36,6 @@ def test_env_name_per_style(style, expected):
     assert s.secret_env_name("PLEX_CLAIM", STYLE_MAP, style) == expected
 
 
-def test_unknown_style_falls_back_to_generic():
-    assert s.secret_env_name("X", STYLE_MAP, "nope") == "X_FILE"
+def test_unknown_style_is_an_error_not_a_silent_fallback():
+    with pytest.raises(ValueError, match="unknown secret_style"):
+        s.secret_env_name("X", STYLE_MAP, "nope")

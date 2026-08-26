@@ -8,7 +8,7 @@
     host: "{{ hostvars[item].ansible_host | default(item) }}"
     port: "{{ hostvars[item].provision.validate.port }}"
   register: _expiry_certs
-  loop: "{{ groups['all'] | difference(['controller']) | select('in', hostvars.keys()) | list }}"
+  loop: "{{ groups['all'] | difference([inventory_hostname]) | select('in', hostvars.keys()) | list }}"
   loop_control:
     label: "{{ item }}"
   when:

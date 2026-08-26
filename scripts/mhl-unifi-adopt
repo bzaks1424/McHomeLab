@@ -27,18 +27,8 @@ def q(s):
     return json.dumps(str(s), ensure_ascii=False)
 
 
-def firewall_policy(name):
-    zones = {z["id"]: z["name"] for z in unifly("firewall", "zones", "list")}
-    pols = unifly("firewall", "policies", "list")
-    if name == "--list":
-        for p in pols:
-            if p.get("origin") != "SystemDefined":
-                print(p["name"])
-        return 0
-    match = [p for p in pols if p["name"] == name]
-    if not match:
-        sys.exit(f"no firewall policy named {name!r} (see --list)")
-    p = match[0]
+def render_policy(p, zones):
+    """Declaration lines for one live policy + list of fields the role does not reconcile."""
     ports = (((p.get("destination") or {}).get("filter") or {}).get("ports") or {}).get("items") or []
     # Fields the unifi role does not reconcile yet: say so, never adopt silently partial.
     unmanaged = []
@@ -49,8 +39,6 @@ def firewall_policy(name):
         unmanaged.append(f"destination.filter kind={dfilter.get('kind')}")
     if p.get("schedule") or p.get("connection_states"):
         unmanaged.append("schedule/connection_states")
-    if unmanaged:
-        print(f"# WARNING: not reconciled by the unifi role yet: {', '.join(unmanaged)} — those stay UI-managed", file=sys.stderr)
     lines = [
         f"          - name: {q(p['name'])}",
         f"            action: {q(p['action'].lower())}",
@@ -63,6 +51,25 @@ def firewall_policy(name):
     lines.append(f"            logging: {'true' if p.get('logging_enabled') else 'false'}")
     if p.get("description"):
         lines.append(f"            description: {q(p['description'])}")
+    return lines, unmanaged
+
+
+def firewall_policy(name):
+    zones = {z["id"]: z["name"] for z in unifly("firewall", "zones", "list")}
+    pols = [p for p in unifly("firewall", "policies", "list") if p.get("origin") == "UserDefined"]
+    if name == "--list":
+        # user-defined only: system rules and auto '(Return)' companions are not adoptable
+        for p in pols:
+            print(f"{p['name']}  [{zones.get(p['source']['zone_id'], '?')} -> {zones.get(p['destination']['zone_id'], '?')}]")
+        return 0
+    match = [p for p in pols if p["name"] == name]
+    if not match:
+        sys.exit(f"no user-defined firewall policy named {name!r} (see --list)")
+    if len(match) > 1:
+        sys.exit(f"{len(match)} user-defined policies named {name!r}; the role matches on (name, zones) — rename one in the UI first")
+    lines, unmanaged = render_policy(match[0], zones)
+    if unmanaged:
+        print(f"# WARNING: not reconciled by the unifi role yet: {', '.join(unmanaged)} — those stay UI-managed", file=sys.stderr)
     print("\n".join(lines))
     return 0
 

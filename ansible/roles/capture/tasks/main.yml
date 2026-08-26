@@ -1,21 +1,22 @@
 ---
+# Captures run on the controller as the user (unifly profile, share ownership), not root.
 - name: "Capture root must be a mounted filesystem"
   ansible.builtin.command:
     argv: ["mountpoint", "-q", "{{ capture_root | dirname }}"]
   register: _capture_mounted
   changed_when: false
-  failed_when: false
+  # 0 = mounted, 1 = not a mountpoint; anything else (missing binary, hung mount) is an error
+  failed_when: _capture_mounted.rc not in [0, 1]
   check_mode: false
 
-- name: "Skip captures when the backup share is not mounted"
-  ansible.builtin.debug:
-    msg: "CAPTURE SKIPPED: {{ capture_root | dirname }} is not mounted on the controller"
-  when: _capture_mounted.rc != 0
+# A skipped backup is a failure, not a no-op: the play goes red so it is noticed.
+- name: "Backup share is not mounted on the controller"
+  ansible.builtin.fail:
+    msg: "CAPTURE: {{ capture_root | dirname }} is not mounted on the controller — no captures ran"
+  when: _capture_mounted.rc != 0 and controller_captures | length > 0
 
-# Each capture task runs as the controller user (unifly profile, share ownership), not root.
 - name: "Run declared captures"
   ansible.builtin.include_tasks: "capture_{{ item.kind }}.yml"
   loop: "{{ controller_captures }}"
   loop_control:
     label: "{{ item.name }}"
-  when: _capture_mounted.rc == 0

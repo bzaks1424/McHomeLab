@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Refuse pushes to the default branch (PR workflow, Q5). GitHub Free cannot
 # protect a private main, so this is the enforcement for McHomeLab-Inventory.
-# Activated by `git config core.hooksPath` — set by scripts/mhl-install-hooks
-# (verified by scripts/hooks/test_hooks.sh, which make validate runs).
+# Activated by `git config core.hooksPath scripts/git-hooks` in each repo (set by hand;
+# the former installer lives in archive/governance-hooks). Still live 2026-08-26.
 while read -r local_ref local_sha remote_ref remote_sha; do
   case "$remote_ref" in
     refs/heads/main|refs/heads/master) echo "pre-push: refusing push to $remote_ref — open a pull request instead." >&2; exit 1 ;;

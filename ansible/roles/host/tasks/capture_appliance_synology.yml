@@ -3,13 +3,30 @@
 # Same calls the DSM UI makes for Control Panel > Update & Restore > Export
 # (captured from a HAR 2026-08-26): SYNO.Backup.Config.Backup start -> status
 # (poll until finish) -> download (attachment synology_<date>.dss, xz). The .dss
-# is plaintext, so it is encrypted with the controller's backup key before it
-# touches the shared export; once per UTC day; SHA256SUMS + latest + prune.
+# is plaintext, so it is downloaded to a private temp dir on the controller and
+# encrypted with the controller's backup key before it touches the shared export;
+# once per UTC day; prune, then SHA256SUMS + latest.
 # Restore: openssl enc -d -aes-256-cbc -pbkdf2 -pass file:<key> -in X.dss.enc -out X.dss,
 # then DSM Control Panel > Update & Restore > Configuration Backup > Restore.
-- name: "Synology capture: today's export name"
+- name: "Synology capture: names"
   ansible.builtin.set_fact:
     _capture_today: "{{ host_capture_dir }}/synology_{{ now(utc=true).strftime('%Y%m%d') }}.dss.enc"
+    _capture_plain: "{{ host_capture_tmp_dir }}/synology_{{ now(utc=true).strftime('%Y%m%d') }}.dss"
+
+- name: "Synology capture: backup share must be mounted on the controller"
+  ansible.builtin.command:
+    argv: ["mountpoint", "-q", "{{ host_capture_root | dirname }}"]
+  register: _capture_mounted
+  changed_when: false
+  failed_when: _capture_mounted.rc not in [0, 1]
+  check_mode: false
+  delegate_to: localhost
+  become: false
+
+- name: "Synology capture: refuse to run against an unmounted share"
+  ansible.builtin.fail:
+    msg: "CAPTURE: {{ host_capture_root | dirname }} is not mounted on the controller — the export would land on the local disk"
+  when: _capture_mounted.rc != 0
 
 - name: "Synology capture: does today's export already exist"
   ansible.builtin.stat:
@@ -18,11 +35,17 @@
   delegate_to: localhost
   become: false
 
-- name: "Synology capture: export directory"
+- name: "Synology capture: export and temp directories"
   ansible.builtin.file:
-    path: "{{ host_capture_dir }}"
+    path: "{{ dir.path }}"
     state: directory
-    mode: "0755"
+    mode: "{{ dir.mode }}"
+  loop:
+    - {path: "{{ host_capture_dir }}", mode: "0755"}
+    - {path: "{{ host_capture_tmp_dir }}", mode: "0700"}
+  loop_control:
+    loop_var: dir
+    label: "{{ dir.path }}"
   delegate_to: localhost
   become: false
 
@@ -43,13 +66,23 @@
   delegate_to: localhost
   become: false
   block:
-    - name: "Synology capture: login"
+    - name: "Synology capture: login (POST; the password never rides a URL)"
       ansible.builtin.uri:
-        url: "{{ host_capture_dsm_base }}?api=SYNO.API.Auth&version=7&method=login&format=sid&account={{ ansible_user | urlencode }}&passwd={{ ansible_become_pass | urlencode }}"
+        url: "{{ host_capture_dsm_base }}"
+        method: "POST"
+        body:
+          api: "SYNO.API.Auth"
+          version: 7
+          method: "login"
+          format: "sid"
+          account: "{{ ansible_user }}"
+          passwd: "{{ ansible_become_pass }}"
+        body_format: "form-urlencoded"
         validate_certs: "{{ host_capture_validate_certs }}"
       register: _capture_login
       no_log: true
       changed_when: false
+      failed_when: not (_capture_login.json.success | default(false))
 
     - name: "Synology capture: start the configuration export"
       ansible.builtin.uri:
@@ -77,35 +110,35 @@
       no_log: true
       changed_when: false
 
-    - name: "Synology capture: download the export"
+    - name: "Synology capture: download the export to the private temp dir"
       ansible.builtin.uri:
         url: "{{ host_capture_dsm_base }}?api=SYNO.Backup.Config.Backup&version=1&method=download&task_id=%22{{ _capture_start.json.data.task_id }}%22&_sid={{ _capture_login.json.data.sid }}"
         validate_certs: "{{ host_capture_validate_certs }}"
-        dest: "{{ _capture_today }}.dss"
+        dest: "{{ _capture_plain }}"
         mode: "0600"
       register: _capture_download
       no_log: true
       changed_when: false
       failed_when: (_capture_download.content_type | default('')) != "application/octet-stream"
 
-    - name: "Synology capture: encrypt, manifest, latest, prune"
+    - name: "Synology capture: encrypt onto the share, prune, manifest, latest"
       ansible.builtin.shell:
         cmd: >-
           set -o pipefail;
           cd {{ host_capture_dir | quote }}
-          && openssl enc -aes-256-cbc -pbkdf2 -salt -pass "file:{{ host_capture_key_path }}" -in {{ _capture_today | quote }}.dss -out {{ _capture_today | quote }}
-          && rm -f {{ _capture_today | quote }}.dss
-          && sha256sum synology_*.dss.enc > SHA256SUMS
-          && ln -sfn {{ _capture_today | basename | quote }} latest.dss.enc
+          && openssl enc -aes-256-cbc -pbkdf2 -salt -pass "file:{{ host_capture_key_path }}" -in {{ _capture_plain | quote }} -out {{ _capture_today | quote }}.tmp
+          && mv {{ _capture_today | quote }}.tmp {{ _capture_today | quote }}
           && ls -1 synology_*.dss.enc | sort | head -n -{{ host_capture_keep }} | xargs -r rm -f
+          && ln -sfn {{ _capture_today | basename | quote }} latest.dss.enc
+          && sha256sum synology_*.dss.enc > SHA256SUMS
         executable: /bin/bash
       changed_when: true
   always:
-    - name: "Synology capture: remove any plaintext leftover"
-      ansible.builtin.file:
-        path: "{{ _capture_today }}.dss"
-        state: absent
+    - name: "Synology capture: shred plaintext in the temp dir"
+      ansible.builtin.shell:
+        cmd: 'test ! -e {{ _capture_plain | quote }} || shred -u -n 1 {{ _capture_plain | quote }}; rm -f {{ _capture_today | quote }}.tmp'
       changed_when: false
+      failed_when: false
 
     - name: "Synology capture: logout"
       ansible.builtin.uri:

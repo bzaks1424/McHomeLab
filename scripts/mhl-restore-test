@@ -36,40 +36,44 @@ if [ -d "$D" ]; then
   [ -z "$stray" ] && ok "step-ca: no unexpected files" || bad "step-ca: unexpected files on the share: $stray"
   latest=$(readlink -f "$D/latest.tar.enc")
   (cd "$D" && sha256sum -c --quiet "$(basename "${latest%.tar.enc}").sha256") && ok "step-ca: checksum" || bad "step-ca: checksum"
-  if dec "$latest" "$TMP/stepca.tar" 2>/dev/null; then
-    listing=$(tar -tf "$TMP/stepca.tar")
+  if dec "$latest" "$TMP/stepca.tar" 2>"$TMP/err"; then
+    listing=$(tar -tf "$TMP/stepca.tar" 2>/dev/null || true)
     for want in opt/containers/step-ca/secrets/root_ca_key opt/containers/step-ca/secrets/intermediate_ca_key opt/containers/step-ca/secrets/password opt/containers/step-ca/db/; do
       grep -qx "$want" <<<"$listing" && ok "step-ca: contains $want" || bad "step-ca: missing $want"
     done
     mkdir -p "$TMP/stepca" && tar -xf "$TMP/stepca.tar" -C "$TMP/stepca" && ok "step-ca: tar extracts ($(find "$TMP/stepca" -type f | wc -l) files)" || bad "step-ca: tar extract"
-  else bad "step-ca: decrypt"; fi
+  else bad "step-ca: decrypt: $(cat "$TMP/err")"; fi
 else bad "step-ca: $D missing"; fi
 
 # --- Synology DSM configuration export ---
 D="$ROOT/synology/config"
 if [ -d "$D" ]; then
   check_dir "$D" "synology" '^synology_[0-9]{8}\.dss\.enc$' '^latest\.dss\.enc$' '^SHA256SUMS$'
-  if dec "$D/latest.dss.enc" "$TMP/synology.dss" 2>/dev/null; then
+  if dec "$D/latest.dss.enc" "$TMP/synology.dss" 2>"$TMP/err"; then
     xz -t "$TMP/synology.dss" && ok "synology: .dss is intact xz ($(stat -c %s "$TMP/synology.dss") bytes)" || bad "synology: xz integrity"
-  else bad "synology: decrypt"; fi
+  else bad "synology: decrypt: $(cat "$TMP/err")"; fi
 else bad "synology: $D missing"; fi
 
 # --- UISP backup ---
 D="$ROOT/uisp"
 if [ -d "$D" ]; then
   check_dir "$D" "uisp" '^uisp_[0-9]{8}\.unmsbackup\.enc$' '^latest\.unmsbackup\.enc$' '^SHA256SUMS$'
-  if dec "$D/latest.unmsbackup.enc" "$TMP/uisp.gz" 2>/dev/null; then
+  if dec "$D/latest.unmsbackup.enc" "$TMP/uisp.gz" 2>"$TMP/err"; then
     gzip -t "$TMP/uisp.gz" && ok "uisp: backup is intact gzip ($(stat -c %s "$TMP/uisp.gz") bytes)" || bad "uisp: gzip integrity"
-    n=$(tar -tzf "$TMP/uisp.gz" 2>/dev/null | wc -l); [ "$n" -gt 0 ] && ok "uisp: tar listing ($n entries)" || bad "uisp: not a tar.gz"
-  else bad "uisp: decrypt"; fi
+    n=$( (tar -tzf "$TMP/uisp.gz" 2>/dev/null || true) | wc -l); [ "$n" -gt 0 ] && ok "uisp: tar listing ($n entries)" || bad "uisp: not a tar.gz"
+  else bad "uisp: decrypt: $(cat "$TMP/err")"; fi
 else bad "uisp: $D missing"; fi
 
-# --- UniFi Network controller backup + snapshots (not encrypted: controller-produced .unf) ---
+# --- UniFi Network controller backup + settings (encrypted: they carry controller secrets) + snapshots ---
 D="$ROOT/unifi/network"
 if [ -d "$D" ]; then
-  check_dir "$D" "unifi" '^autobackup_.*\.unf$' '^latest\.unf$' '^settings\.json$' '^snapshot-[a-z-]+\.yaml$' '^SHA256SUMS$'
-  [ -s "$(readlink -f "$D/latest.unf")" ] && ok "unifi: latest.unf present ($(stat -c %s "$(readlink -f "$D/latest.unf")") bytes)" || bad "unifi: latest.unf"
-  python3 -c "import json,sys; json.load(open('$D/settings.json'))" && ok "unifi: settings.json parses" || bad "unifi: settings.json"
+  check_dir "$D" "unifi" '^autobackup_.*\.unf\.enc$' '^latest\.unf\.enc$' '^settings\.json\.enc$' '^snapshot-[a-z-]+\.yaml$' '^SHA256SUMS$'
+  if dec "$(readlink -f "$D/latest.unf.enc")" "$TMP/unifi.unf" 2>"$TMP/err"; then
+    [ -s "$TMP/unifi.unf" ] && ok "unifi: latest.unf decrypts ($(stat -c %s "$TMP/unifi.unf") bytes)" || bad "unifi: decrypted .unf is empty"
+  else bad "unifi: decrypt .unf: $(cat "$TMP/err")"; fi
+  if dec "$D/settings.json.enc" "$TMP/settings.json" 2>"$TMP/err"; then
+    python3 -c "import json; json.load(open('$TMP/settings.json'))" && ok "unifi: settings.json decrypts and parses" || bad "unifi: settings.json not JSON"
+  else bad "unifi: decrypt settings: $(cat "$TMP/err")"; fi
 else bad "unifi: $D missing"; fi
 
 [ "$FAIL" -eq 0 ] && echo "RESTORE-TEST: all backup types rehearsed OK" || { echo "RESTORE-TEST: FAILURES above"; exit 1; }

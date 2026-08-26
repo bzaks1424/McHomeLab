@@ -14,3 +14,5 @@ capture_max_age_days: 2
 capture_key_path: "{{ lookup('env', 'HOME') }}/.mhl/vault/backup.pass"
 capture_uisp_retries: 60
 capture_uisp_delay: 5
+# Plaintext downloads live here (controller local disk, 0700) and are shredded; never on the share.
+capture_tmp_dir: "{{ lookup('env', 'HOME') }}/.mhl/tmp"

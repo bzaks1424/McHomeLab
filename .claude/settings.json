@@ -1,5 +1,5 @@
 {
-  "_comment": "Permissions only. Hook definitions live in USER scope (~/.claude/settings.json; reference: scripts/hooks/user-settings-hooks.json). CAVEAT: a project-local settings(.local).json with disableAllHooks:true overrides user-scope hooks (verified 2.1.245); guard_bash denies shell writes to it, and session_context/stop_gate/make hooks-installed check every scope for it. No allow rule may permit a command that can write a file (curl -o, tee, redirects): curl is deliberately absent so it prompts.",
+  "_comment": "Permissions only (allow list; deny/ask removed 2026-08-26 at Mike's request). Hook enforcement retired 2026-08-25 \u2014 see archive/governance-hooks.",
   "permissions": {
     "defaultMode": "default",
     "allow": [
@@ -9,11 +9,8 @@
       "Bash(make render*)",
       "Bash(make syntax)",
       "Bash(make no-secrets*)",
-      "Bash(make hooks)",
-      "Bash(make hooks-installed)",
       "Bash(make deps)",
       "Bash(make check)",
-      "Bash(scripts/hooks/test_hooks.sh)",
       "Bash(scripts/mhl-no-secrets *)",
       "Bash(scripts/tests/secrets_matrix.sh)",
       "Bash(cd /home/mmcdonnell/workspace/McHomeLab/ansible)",
@@ -68,15 +65,24 @@
       "Bash(bash /media/Backups/claude/tools/check-inbox.sh mchomelab*)",
       "Read(//home/mmcdonnell/workspace/McHomeLab-Inventory/**)",
       "Read(//home/mmcdonnell/.mhl/registry.json)",
-      "Read(//home/mmcdonnell/.mhl/*/**)",
       "Read(//tmp/claude-1000/**)",
       "Read(//media/Backups/claude/**)",
       "WebFetch(domain:docs.ansible.com)",
       "WebFetch(domain:code.claude.com)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebSearch"
-    ],
-    "_comment": "deny/ask lists removed 2026-08-26 at Mike's request; scope limits return when he decides"
+      "WebSearch",
+      "Read(//home/mmcdonnell/.mhl/util/**)",
+      "Read(//home/mmcdonnell/.mhl/media/**)",
+      "Read(//home/mmcdonnell/.mhl/unifi/**)",
+      "Read(//home/mmcdonnell/.mhl/synology/**)",
+      "Read(//home/mmcdonnell/.mhl/printer/**)",
+      "Read(//home/mmcdonnell/.mhl/controller/**)",
+      "Read(//home/mmcdonnell/.mhl/downloads/**)",
+      "Bash(make unit)",
+      "Bash(make restore-test)",
+      "Bash(scripts/mhl-restore-test*)",
+      "Bash(scripts/mhl-unifi-adopt *)"
+    ]
   }
 }

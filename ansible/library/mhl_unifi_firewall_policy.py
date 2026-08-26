@@ -3,9 +3,12 @@
 """Ansible module: reconcile ONE UniFi Network firewall policy by name via unifly.
 
 Upsert semantics (Phase 5 decision): absent -> create; present -> converge the
-compared fields. unifly `update` can only change the destination ports; a drift
-in action / zones / enabled / logging fails loudly rather than deleting and
-recreating behind the operator's back. Check mode reports what would happen.
+compared fields. In place, unifly can change the destination ports (`update`) and
+toggle enabled/logging (`patch`); a drift in action, zones or filter kind fails
+loudly rather than deleting and recreating behind the operator's back. Policies
+are matched on (name, source zone, destination zone) among user-defined rules —
+names alone are not unique on a controller. Description and index are set at
+create time only and never compared. Check mode reports what would happen.
 Zones are given by NAME; ids never appear in the inventory."""
 from __future__ import absolute_import, division, print_function
 
@@ -44,7 +47,8 @@ diff_keys: {description: compared fields that differ, type: list}
 
 from ansible.module_utils.basic import AnsibleModule  # noqa: E402
 from ansible.module_utils.mhl_unifly import (  # noqa: E402
-    UPDATE_ONLY, Unifly, UniflyError, by_name, create_args, diff_keys, policy_shape, update_args, zone_map,
+    PATCHABLE, UPDATE_ONLY, AmbiguousMatch, Unifly, UniflyError, create_args, diff_keys, find_policy,
+    patch_args, policy_shape, update_args, zone_map,
 )
 
 
@@ -59,19 +63,25 @@ def plan(params, zones, policies):
         "enabled": bool(params["enabled"]),
         "source_zone_id": zmap[params["source_zone"]],
         "destination_zone_id": zmap[params["destination_zone"]],
+        "destination_filter_kind": "port" if params["destination_ports"] else "",
         "destination_ports": sorted(str(p) for p in (params["destination_ports"] or [])),
         "logging": bool(params["logging"]),
     }
-    current_raw = by_name(policies, params["name"])
+    try:
+        current_raw = find_policy(policies, params["name"], desired["source_zone_id"], desired["destination_zone_id"])
+    except AmbiguousMatch as e:
+        return {"error": str(e)}
     if current_raw is None:
         return {"state": "absent -> create", "diff": list(desired), "desired": desired, "current": None}
     current = policy_shape(current_raw)
     diff = diff_keys(desired, current)
     if not diff:
         return {"state": "in sync", "diff": [], "desired": desired, "current": current, "id": current_raw.get("id")}
-    blocked = [k for k in diff if k not in UPDATE_ONLY]
+    blocked = [k for k in diff if k not in UPDATE_ONLY + PATCHABLE]
+    if "destination_ports" in diff and not desired["destination_ports"]:
+        blocked.append("destination_ports (clearing the port filter has no unifly flag)")
     if blocked:
-        return {"error": "policy %r differs in %s, which unifly update cannot change; delete it in the "
+        return {"error": "policy %r differs in %s, which unifly cannot change in place; delete it in the "
                          "controller (or rename the declaration) and re-apply — not done automatically"
                          % (params["name"], ", ".join(blocked)), "diff": diff}
     return {"state": "update", "diff": diff, "desired": desired, "current": current, "id": current_raw.get("id")}
@@ -105,10 +115,15 @@ def main():
     if result["changed"] and not module.check_mode:
         try:
             if p["state"] == "absent -> create":
-                u.call("firewall", "policies", "create", *create_args(module.params["name"], p["desired"], module.params["description"]))
+                u.write("firewall", "policies", "create", *create_args(module.params["name"], p["desired"], module.params["description"]))
             else:
-                u.call("firewall", "policies", "update", p["id"], *update_args(p["desired"]))
-        except UniflyError as e:
+                if "destination_ports" in p["diff"]:
+                    u.write("firewall", "policies", "update", p["id"], *update_args(p["desired"]))
+                patch = [k for k in p["diff"] if k in PATCHABLE]
+                if patch:
+                    u.write("firewall", "policies", "patch", p["id"], *patch_args(p["desired"], patch))
+        except (UniflyError, ValueError) as e:
+            result["changed"] = False
             module.fail_json(msg=str(e), **result)
     module.exit_json(**result)
 

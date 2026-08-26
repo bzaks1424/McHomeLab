@@ -20,7 +20,7 @@
     method: "POST"
     body: "{{ item.login.body }}"
     body_format: "form-urlencoded"
-    validate_certs: "{{ item.validate_certs | default(false) }}"
+    validate_certs: "{{ item.validate_certs | default(true) }}"
     status_code: [200, 204]
   register: _api_login
   check_mode: false
@@ -35,7 +35,7 @@
     url: "{{ item.read.url | default(item.url) }}"
     method: "GET"
     headers: "{{ item.headers | default({}) | combine({'Cookie': (_api_login.cookies_string | default(''))}) }}"
-    validate_certs: "{{ item.validate_certs | default(false) }}"
+    validate_certs: "{{ item.validate_certs | default(true) }}"
     return_content: true
     status_code: [200]
   register: _api_current
@@ -46,6 +46,11 @@
   until: _api_current.status | default(0) == 200
   retries: "{{ item.retries | default(12) }}"
   delay: "{{ item.delay | default(10) }}"
+
+- name: "Settings read must be JSON, else a login page would be written every run — {{ item.service }}"
+  ansible.builtin.assert:
+    that: _api_current.json is defined and _api_current.json is not string
+    fail_msg: "{{ item.service }}: settings read returned non-JSON ({{ _api_current.content_type | default('?') }}) — not writing"
 
 - name: "Extract current values for {{ item.service }}"
   ansible.builtin.set_fact:
@@ -63,6 +68,11 @@
   when: "(_api_actual[entry.key] | default('<absent>') | string) != (entry.value | string)"
   no_log: true
 
+- name: "Refuse to write keys the API does not report (typo in want:, or wrong read.path) — {{ item.service }}"
+  ansible.builtin.assert:
+    that: item.want.keys() | reject('in', _api_actual.keys()) | list | length == 0 or (item.allow_absent | default(false))
+    fail_msg: "{{ item.service }}: declared keys not present in the API read: {{ item.want.keys() | reject('in', _api_actual.keys()) | list }} (set allow_absent: true if intended)"
+
 - name: "Report {{ item.service }} settings that differ from the inventory"
   ansible.builtin.debug:
     msg: "{{ item.service }}: {{ _api_changed_keys | length }} setting(s) differ: {{ _api_changed_keys }}"
@@ -75,7 +85,7 @@
     headers: "{{ item.headers | default({}) | combine({'Cookie': (_api_login.cookies_string | default(''))}) }}"
     body: "{{ item.write_body | default(item.want) }}"
     body_format: "{{ item.body_format | default('json') }}"
-    validate_certs: "{{ item.validate_certs | default(false) }}"
+    validate_certs: "{{ item.validate_certs | default(true) }}"
     status_code: "{{ item.status_code | default([200, 204]) }}"
   when: _api_changed_keys | length > 0
   changed_when: true

@@ -5,12 +5,6 @@ tools: Read, Grep, Glob, Bash
 disallowedTools: Write, Edit, NotebookEdit, WebFetch, WebSearch
 permissionMode: dontAsk
 maxTurns: 25
-hooks:
-  PreToolUse:
-    - matcher: "Bash"
-      hooks:
-        - type: command
-          command: "bash $HOME/.mhl/hooks/guard_bash.sh"
 ---
 You check drift; you never fix it. You run under dontAsk, so only allow-listed
 commands run: the two verbatim commands in the drift skill, `make render*`,

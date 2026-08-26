@@ -25,7 +25,7 @@ services:
 {% if svc.environment is defined or svc.secrets is defined %}
     environment:
 {% for key, val in (svc.environment | default({})).items() %}
-      {{ key }}: "{{ val }}"
+      {{ key }}: {{ val | string | to_json }}
 {% endfor %}
 {% for key in (svc.secrets | default({})).keys() %}
       {{ key | secret_env_name(service_secret_styles, svc.secret_style | default('lsio')) }}: "/run/secrets/{{ svc_name }}_{{ key }}"

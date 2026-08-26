@@ -4,6 +4,20 @@
 # controller can be rebuilt from the safe. Hourly cron in the controller user's
 # crontab plus one immediate sync. Declared in hosts.yml on the controller:
 #   vault_escrow_dir: "/media/Backups/UserData/gdrive/Projects/Home Tech/Keys/MHL vault"
+- name: "Vault escrow: destination must be a mounted filesystem"
+  ansible.builtin.command:
+    argv: ["mountpoint", "-q", "{{ controller_vault_escrow_mount }}"]
+  register: _escrow_mounted
+  changed_when: false
+  failed_when: _escrow_mounted.rc not in [0, 1]
+  check_mode: false
+  become: false
+
+- name: "Vault escrow: refuse to mirror secrets onto the local disk"
+  ansible.builtin.fail:
+    msg: "ESCROW: {{ controller_vault_escrow_mount }} is not mounted — the vault would be copied to the local disk"
+  when: _escrow_mounted.rc != 0
+
 - name: "Vault escrow directory"
   ansible.builtin.file:
     path: "{{ controller_vault_escrow_dir }}"

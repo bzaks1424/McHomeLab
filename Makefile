@@ -1,7 +1,7 @@
 VENV      := .venv/bin
 INVENTORY := ansible/inventory/test.yml
 
-.PHONY: ci deps lint yamllint ansible-lint syntax check render no-secrets no-secrets-all hooks hooks-installed secrets-matrix unit restore-test validate test
+.PHONY: ci deps lint yamllint ansible-lint syntax check render no-secrets no-secrets-all secrets-matrix unit restore-test validate test
 
 deps:
 	cd ansible && ../$(VENV)/ansible-galaxy collection install -r requirements.yml -p ./collections --force
@@ -22,7 +22,7 @@ yamllint:
 	$(VENV)/yamllint -c .yamllint ansible/
 
 ansible-lint:
-	cd ansible && ../$(VENV)/ansible-lint roles/ tasks/ group_vars/ filter_plugins/
+	cd ansible && ../$(VENV)/ansible-lint roles/ tasks/ group_vars/ filter_plugins/ library/ module_utils/ tests/
 
 check:
 	cd ansible && ../$(VENV)/ansible-playbook site.yml -i ../$(INVENTORY) --check -v
@@ -36,19 +36,12 @@ render:
 no-secrets:
 	scripts/mhl-no-secrets .
 
-# Both repos — red until the inventory is vaulted (Phase 1).
+# Both repos (the inventory is vaulted; this is the cross-repo gate).
 no-secrets-all:
 	scripts/mhl-no-secrets
 
-hooks:
-	scripts/hooks/test_hooks.sh
-
-# Machine-dependent: installed copies present, wired from ~/.claude/settings.json, core.hooksPath set.
-hooks-installed:
-	MHL_HOOKS_INSTALLED=1 scripts/hooks/test_hooks.sh
-
 # CI subset (GitHub Actions): everything that needs no machine state.
-ci: lint syntax no-secrets hooks unit
+ci: lint syntax no-secrets unit
 
 # The green/red check. "Done" means this passed.
 # Gate/tool agreement matrix. Exit 3 = SKIPPED (no venv/vault password) and is
@@ -56,8 +49,7 @@ ci: lint syntax no-secrets hooks unit
 secrets-matrix:
 	scripts/tests/secrets_matrix.sh
 
-# Hook enforcement is disabled (Mike, 2026-08-25); `make hooks` / `make hooks-installed`
-# remain runnable but are not part of validate.
+# Hook enforcement was retired 2026-08-25 (archive/governance-hooks); PR review + validate are the gate.
 validate: lint syntax render no-secrets secrets-matrix unit
 
 test: validate restore-test

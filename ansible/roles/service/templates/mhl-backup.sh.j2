@@ -8,11 +8,21 @@
 set -euo pipefail
 ROOT="{{ service_backup_root }}/{{ inventory_hostname }}/{{ item.key }}"
 KEY="{{ service_backup_key_path }}"
-mountpoint -q "{{ service_backup_root | dirname }}" || { echo "backup root not mounted; skipping"; exit 0; }
-[ -r "$KEY" ] || { echo "backup key $KEY missing; refusing to write plaintext"; exit 1; }
+mountpoint -q "{{ service_backup_root | dirname }}" || { echo "backup root not mounted; refusing" >&2; exit 1; }
+[ -r "$KEY" ] || { echo "backup key $KEY missing; refusing to write plaintext" >&2; exit 1; }
 STAMP=$(date -u +%Y-%m-%dT%H%M%SZ); OUT="$ROOT/$STAMP.tar.enc"
 mkdir -p "$ROOT"
-tar -C / -cf - {% for p in item.value.backup.paths %}"{{ p | regex_replace('^/', '') }}" {% endfor %}| openssl enc -aes-256-cbc -pbkdf2 -salt -pass "file:$KEY" -out "$OUT"
+# Write to .tmp and rename only on success: a partial snapshot must never match the
+# retention glob or count toward `keep`. tar rc 1 = "file changed as we read it" (live db)
+# is accepted; anything else aborts.
+trap 'rm -f "$OUT.tmp"' ERR EXIT
+set +e
+tar -C / --warning=no-file-changed -cf - {% for p in item.value.backup.paths %}"{{ p | regex_replace('^/', '') }}" {% endfor %}| openssl enc -aes-256-cbc -pbkdf2 -salt -pass "file:$KEY" -out "$OUT.tmp"
+rcs=("${PIPESTATUS[@]}"); set -e
+[ "${rcs[1]}" -eq 0 ] || { echo "openssl failed (rc ${rcs[1]})" >&2; exit 1; }
+[ "${rcs[0]}" -eq 0 ] || [ "${rcs[0]}" -eq 1 ] || { echo "tar failed (rc ${rcs[0]})" >&2; exit 1; }
+mv "$OUT.tmp" "$OUT"
+trap - ERR EXIT
 ( cd "$ROOT" && sha256sum "$STAMP.tar.enc" > "$STAMP.sha256" )
 ln -sfn "$STAMP.tar.enc" "$ROOT/latest.tar.enc"
 ls -1 "$ROOT"/????-??-??T??????Z.tar.enc 2>/dev/null | sort | head -n -{{ item.value.backup.keep | default(14) }} | while read -r old; do rm -f "$old" "${old%.tar.enc}.sha256"; done

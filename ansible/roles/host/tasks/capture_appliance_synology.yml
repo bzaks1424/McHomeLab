@@ -1,38 +1,141 @@
 ---
-# Observed appliance (Phase 4): the Synology backs ITSELF up on DSM's own schedule
-# (Control Panel > Update & Restore > Configuration Backup) into the HomeLabBackup
-# share. This step verifies that export exists and is fresh, and records a manifest;
-# MHL never writes the export. Runs on the controller, which mounts the share.
-- name: "Locate Synology configuration exports"
-  ansible.builtin.find:
-    paths: "{{ host_capture_dir }}"
-    patterns: "*.dss"
-    recurse: false
-  register: _capture_exports
-  failed_when: false
+# Observed appliance (Phase 4): DSM configuration export pulled by the controller.
+# Same calls the DSM UI makes for Control Panel > Update & Restore > Export
+# (captured from a HAR 2026-08-26): SYNO.Backup.Config.Backup start -> status
+# (poll until finish) -> download (attachment synology_<date>.dss, xz). The .dss
+# is plaintext, so it is encrypted with the controller's backup key before it
+# touches the shared export; once per UTC day; SHA256SUMS + latest + prune.
+# Restore: openssl enc -d -aes-256-cbc -pbkdf2 -pass file:<key> -in X.dss.enc -out X.dss,
+# then DSM Control Panel > Update & Restore > Configuration Backup > Restore.
+- name: "Synology capture: today's export name"
+  ansible.builtin.set_fact:
+    _capture_today: "{{ host_capture_dir }}/synology_{{ now(utc=true).strftime('%Y%m%d') }}.dss.enc"
+
+- name: "Synology capture: does today's export already exist"
+  ansible.builtin.stat:
+    path: "{{ _capture_today }}"
+  register: _capture_stat
   delegate_to: localhost
   become: false
 
-- name: "Warn when no configuration export exists yet"
-  ansible.builtin.debug:
-    msg: >-
-      CAPTURE: no Synology configuration export found in {{ host_capture_dir }} —
-      enable DSM's scheduled Configuration Backup to that folder (research/RESEARCH_SYSADMIN_AGENT.md §13.3)
-  when: (_capture_exports.files | default([])) | length == 0
+- name: "Synology capture: export directory"
+  ansible.builtin.file:
+    path: "{{ host_capture_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
 
-- name: "Assert the newest export is fresh"
-  when: (_capture_exports.files | default([])) | length > 0
+- name: "Synology capture: backup key present on the controller"
+  ansible.builtin.stat:
+    path: "{{ host_capture_key_path }}"
+  register: _capture_key
+  delegate_to: localhost
+  become: false
+
+- name: "Synology capture: refuse to write plaintext"
+  ansible.builtin.assert:
+    that: _capture_key.stat.exists
+    fail_msg: "CAPTURE: backup key {{ host_capture_key_path }} missing on the controller — refusing to write a plaintext DSM export to the share"
+
+- name: "Synology capture: export and encrypt"
+  when: not _capture_stat.stat.exists and not ansible_check_mode
+  delegate_to: localhost
+  become: false
+  block:
+    - name: "Synology capture: login"
+      ansible.builtin.uri:
+        url: "{{ host_capture_dsm_base }}?api=SYNO.API.Auth&version=7&method=login&format=sid&account={{ ansible_user | urlencode }}&passwd={{ ansible_become_pass | urlencode }}"
+        validate_certs: "{{ host_capture_validate_certs }}"
+      register: _capture_login
+      no_log: true
+      changed_when: false
+
+    - name: "Synology capture: start the configuration export"
+      ansible.builtin.uri:
+        url: "{{ host_capture_dsm_base }}"
+        method: "POST"
+        body: {api: "SYNO.Backup.Config.Backup", method: "start", version: 1, _sid: "{{ _capture_login.json.data.sid }}"}
+        body_format: "form-urlencoded"
+        validate_certs: "{{ host_capture_validate_certs }}"
+      register: _capture_start
+      no_log: true
+      changed_when: false
+      failed_when: not (_capture_start.json.success | default(false))
+
+    - name: "Synology capture: wait for the export task"
+      ansible.builtin.uri:
+        url: "{{ host_capture_dsm_base }}"
+        method: "POST"
+        body: {api: "SYNO.Backup.Config.Backup", method: "status", version: 1, task_id: "\"{{ _capture_start.json.data.task_id }}\"", _sid: "{{ _capture_login.json.data.sid }}"}
+        body_format: "form-urlencoded"
+        validate_certs: "{{ host_capture_validate_certs }}"
+      register: _capture_status
+      until: _capture_status.json.data.finish | default(false)
+      retries: "{{ host_capture_dsm_retries }}"
+      delay: "{{ host_capture_dsm_delay }}"
+      no_log: true
+      changed_when: false
+
+    - name: "Synology capture: download the export"
+      ansible.builtin.uri:
+        url: "{{ host_capture_dsm_base }}?api=SYNO.Backup.Config.Backup&version=1&method=download&task_id=%22{{ _capture_start.json.data.task_id }}%22&_sid={{ _capture_login.json.data.sid }}"
+        validate_certs: "{{ host_capture_validate_certs }}"
+        dest: "{{ _capture_today }}.dss"
+        mode: "0600"
+      register: _capture_download
+      no_log: true
+      changed_when: false
+      failed_when: (_capture_download.content_type | default('')) != "application/octet-stream"
+
+    - name: "Synology capture: encrypt, manifest, latest, prune"
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          cd {{ host_capture_dir | quote }}
+          && openssl enc -aes-256-cbc -pbkdf2 -salt -pass "file:{{ host_capture_key_path }}" -in {{ _capture_today | quote }}.dss -out {{ _capture_today | quote }}
+          && rm -f {{ _capture_today | quote }}.dss
+          && sha256sum synology_*.dss.enc > SHA256SUMS
+          && ln -sfn {{ _capture_today | basename | quote }} latest.dss.enc
+          && ls -1 synology_*.dss.enc | sort | head -n -{{ host_capture_keep }} | xargs -r rm -f
+        executable: /bin/bash
+      changed_when: true
+  always:
+    - name: "Synology capture: remove any plaintext leftover"
+      ansible.builtin.file:
+        path: "{{ _capture_today }}.dss"
+        state: absent
+      changed_when: false
+
+    - name: "Synology capture: logout"
+      ansible.builtin.uri:
+        url: "{{ host_capture_dsm_base }}?api=SYNO.API.Auth&version=7&method=logout&_sid={{ _capture_login.json.data.sid | default('') }}"
+        validate_certs: "{{ host_capture_validate_certs }}"
+      when: _capture_login.json.data.sid is defined
+      no_log: true
+      changed_when: false
+      failed_when: false
+
+- name: "Synology capture: locate exports"
+  ansible.builtin.find:
+    paths: "{{ host_capture_dir }}"
+    patterns: "synology_*.dss.enc"
+    recurse: false
+  register: _capture_exports
+  delegate_to: localhost
+  become: false
+
+- name: "Synology capture: at least one export exists"
+  ansible.builtin.assert:
+    that: _capture_exports.files | length > 0
+    fail_msg: "CAPTURE: no Synology export in {{ host_capture_dir }}"
+  when: not ansible_check_mode
+
+- name: "Synology capture: newest export is fresh"
+  when: not ansible_check_mode
   vars:
     _newest: "{{ _capture_exports.files | sort(attribute='mtime') | last }}"
-  block:
-    - name: "Fail when the newest export is older than {{ host_capture_max_age_days }} days"
-      ansible.builtin.assert:
-        that: (now(utc=true).timestamp() - _newest.mtime) < (host_capture_max_age_days | int) * 86400
-        fail_msg: "CAPTURE STALE: newest Synology export {{ _newest.path | basename }} is older than {{ host_capture_max_age_days }} days — DSM's scheduled export is not running"
-        success_msg: "capture: newest Synology export {{ _newest.path | basename }} ({{ ((now(utc=true).timestamp() - _newest.mtime) / 3600) | round(1) }} h old)"
-    - name: "Record manifest for the newest export"
-      ansible.builtin.shell:
-        cmd: "cd {{ host_capture_dir | quote }} && sha256sum {{ _newest.path | basename | quote }} > SHA256SUMS && ln -sfn {{ _newest.path | basename | quote }} latest.dss"
-      changed_when: false
-      delegate_to: localhost
-      become: false
+  ansible.builtin.assert:
+    that: (now(utc=true).timestamp() - _newest.mtime) < (host_capture_max_age_days | int) * 86400
+    fail_msg: "CAPTURE STALE: newest Synology export {{ _newest.path | basename }} is older than {{ host_capture_max_age_days }} days"
+    success_msg: "capture: newest Synology export {{ _newest.path | basename }} ({{ ((now(utc=true).timestamp() - _newest.mtime) / 3600) | round(1) }} h old)"

@@ -46,3 +46,8 @@ service_wud_tls_container_dir: "/wud/tls"
 # Services declaring a backup: block (see defaults)
 service_backup_services: >-
   {{ service_services | dict2items | selectattr('value.backup', 'defined') | items2dict }}
+
+# All api_settings groups across services (each group carries its `service:` label).
+service_api_settings: >-
+  {{ service_services | dict2items | selectattr('value.api_settings', 'defined')
+     | map(attribute='value.api_settings') | list | flatten }}

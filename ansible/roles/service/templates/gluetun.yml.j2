@@ -8,20 +8,24 @@
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
+    secrets:
+{% for sec in service_gluetun_secret_entries %}
+      - gluetun_{{ sec.name }}
+{% endfor %}
     environment:
       VPN_SERVICE_PROVIDER: "{{ config.vpn_provider }}"
       VPN_TYPE: "{{ config.vpn_type }}"
 {% if config.vpn_type == "wireguard" %}
-      WIREGUARD_PRIVATE_KEY: "{{ config.wireguard_private_key }}"
+      WIREGUARD_PRIVATE_KEY_SECRETFILE: "/run/secrets/gluetun_WIREGUARD_PRIVATE_KEY"
 {% if config.wireguard_preshared_key is defined %}
-      WIREGUARD_PRESHARED_KEY: "{{ config.wireguard_preshared_key }}"
+      WIREGUARD_PRESHARED_KEY_SECRETFILE: "/run/secrets/gluetun_WIREGUARD_PRESHARED_KEY"
 {% endif %}
 {% if config.wireguard_addresses is defined %}
       WIREGUARD_ADDRESSES: "{{ config.wireguard_addresses }}"
 {% endif %}
 {% else %}
       OPENVPN_USER: "{{ config.vpn_user }}"
-      OPENVPN_PASSWORD: "{{ config.vpn_password }}"
+      OPENVPN_PASSWORD_SECRETFILE: "/run/secrets/gluetun_OPENVPN_PASSWORD"
 {% endif %}
 {% if config.server_countries is defined %}
       SERVER_COUNTRIES: "{{ config.server_countries }}"

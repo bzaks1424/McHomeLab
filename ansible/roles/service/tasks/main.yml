@@ -89,6 +89,12 @@
         label: "{{ item.name }}"
       notify: "Restart wud"
 
+- name: "Restart services whose secret files changed"
+  ansible.builtin.command:
+    argv: ["docker", "compose", "--project-directory", "{{ service_dir }}", "restart", "{{ item }}"]
+  loop: "{{ service_secret_restart | default([]) }}"
+  changed_when: true
+
 - name: "Install backup scripts and timers for services that declare backup:"
   when: service_backup_services | length > 0
   block:
@@ -168,6 +174,36 @@
     state: absent
   loop: "{{ service_retire_paths }}"
   when: item is match('^/opt/')  # never outside the container tree
+
+- name: "Deliver compose secrets as 0400 files (never in the compose file)"
+  when: service_secret_manifest | length > 0
+  block:
+    - name: "Create secrets directories"
+      ansible.builtin.file:
+        path: "{{ service_secrets_dir }}/{{ item }}"
+        state: directory
+        mode: "{{ service_secrets_dir_mode }}"
+        owner: root
+        group: root
+      loop: "{{ service_secret_manifest | map(attribute='service') | unique | list }}"
+    - name: "Write secret files"
+      ansible.builtin.copy:
+        content: "{{ item.value }}"
+        dest: "{{ service_secrets_dir }}/{{ item.service }}/{{ item.name }}"
+        mode: "{{ service_secret_file_mode }}"
+        owner: "{{ service_secret_styles[item.style].owner }}"
+        group: root
+      loop: "{{ service_secret_manifest }}"
+      loop_control:
+        label: "{{ item.service }}/{{ item.name }}"
+      no_log: true
+      register: _service_secret_files
+    # A changed secret file does not change the compose config-hash, and the running
+    # container keeps the OLD inode (Ansible writes by rename): restart just those services.
+    - name: "Note services whose secrets changed"
+      ansible.builtin.set_fact:
+        service_secret_restart: "{{ _service_secret_files.results | selectattr('changed') | map(attribute='item.service') | unique | list }}"
+      no_log: true
 
 - name: "Template docker-compose.yml"
   ansible.builtin.template:

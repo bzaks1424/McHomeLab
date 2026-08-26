@@ -1,0 +1,2 @@
+# Dev/test tooling for `make unit` (installed into .venv by `make deps`)
+pytest>=8,<9

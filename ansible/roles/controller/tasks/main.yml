@@ -7,3 +7,6 @@
     opts: "{{ item.options }}"
     state: mounted
   loop: "{{ controller_nfs_mounts }}"
+
+- name: "Expiry watch (read-only)"
+  ansible.builtin.import_tasks: expiry.yml

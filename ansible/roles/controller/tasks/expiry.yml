@@ -1,0 +1,49 @@
+---
+# Expiry watch (controller-side, read-only): every host that declares a validate
+# port has its served certificate fetched; every credential with a declared expiry
+# in hosts.yml (controller.credential_expiries) is checked. Warnings at
+# controller_expiry_warn_days; nothing is changed.
+- name: "Fetch served certificates from hosts with a validate port"
+  community.crypto.get_certificate:
+    host: "{{ hostvars[item].ansible_host | default(item) }}"
+    port: "{{ hostvars[item].provision.validate.port }}"
+  register: _expiry_certs
+  loop: "{{ groups['all'] | difference(['controller']) | select('in', hostvars.keys()) | list }}"
+  loop_control:
+    label: "{{ item }}"
+  when:
+    - hostvars[item].provision.validate.port is defined
+    - hostvars[item].provision.validate.port | string not in ['22']
+  check_mode: false
+  changed_when: false
+  failed_when: false
+
+- name: "Warn on certificates expiring within {{ controller_expiry_warn_days }} days"
+  ansible.builtin.debug:
+    msg: >-
+      CERT EXPIRY: {{ item.item }} ({{ item.subject.CN | default('?') }}) expires
+      {{ item.not_after }} — {{ ((item.not_after | to_datetime('%Y%m%d%H%M%SZ')) - now(utc=true)).days }} days
+  loop: "{{ _expiry_certs.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.not_after is defined
+    - ((item.not_after | to_datetime('%Y%m%d%H%M%SZ')) - now(utc=true)).days < controller_expiry_warn_days | int
+
+- name: "Report certificate fetch failures"
+  ansible.builtin.debug:
+    msg: "CERT CHECK FAILED: {{ item.item }} — {{ item.msg | default('no certificate') | truncate(120) }}"
+  loop: "{{ _expiry_certs.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.not_after is not defined and item is not skipped
+
+- name: "Warn on declared credentials expiring within {{ controller_expiry_warn_days }} days"
+  ansible.builtin.debug:
+    msg: >-
+      CREDENTIAL EXPIRY: {{ item.name }} ({{ item.where }}) expires {{ item.expires }} —
+      {{ ((item.expires | to_datetime('%Y-%m-%d')) - now(utc=true)).days }} days
+  loop: "{{ controller_credential_expiries }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: ((item.expires | to_datetime('%Y-%m-%d')) - now(utc=true)).days < controller_expiry_warn_days | int

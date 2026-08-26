@@ -8,5 +8,8 @@
     state: mounted
   loop: "{{ controller_nfs_mounts }}"
 
+- name: "Controller toolchain"
+  ansible.builtin.import_tasks: toolchain.yml
+
 - name: "Expiry watch (read-only)"
   ansible.builtin.import_tasks: expiry.yml

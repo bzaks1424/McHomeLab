@@ -1,0 +1,59 @@
+---
+# The controller owns its own toolchain (decision Q12): a rebuilt controller
+# gets everything site.yml needs from this role, not from hand installs.
+- name: "Install step CLI (pinned .deb)"
+  ansible.builtin.apt:
+    deb: "{{ controller_step_cli_deb }}"
+  when: >-
+    (lookup('ansible.builtin.pipe', 'step version 2>/dev/null || true') | regex_search('Smallstep CLI/([0-9.]+)', '\\1') | default([''], true) | first) != controller_step_cli_version
+
+- name: "Install docker CLI (for --context reads and compose config)"
+  ansible.builtin.apt:
+    name: ["docker-ce-cli", "docker-compose-plugin"]
+    state: present
+  when: controller_manage_docker_cli | bool
+
+- name: "Ensure vault directories exist with strict modes"
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: "{{ item.mode }}"
+  become: false
+  loop:
+    - {path: "{{ controller_mhl_home }}/vault", mode: "0700"}
+    - {path: "{{ controller_mhl_home }}/bin", mode: "0700"}
+
+- name: "Install the vault password client from the repo"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../scripts/mhl-vault-client"
+    dest: "{{ controller_mhl_home }}/bin/mhl-vault-client"
+    mode: "0700"
+  become: false
+
+- name: "Assert the vault password file is present (restore from Mike's safe if not)"
+  ansible.builtin.stat:
+    path: "{{ controller_mhl_home }}/vault/mhl.pass"
+  register: _controller_vault_pass
+  become: false
+  failed_when: not _controller_vault_pass.stat.exists or _controller_vault_pass.stat.mode != '0600'
+
+- name: "Install pinned collections from requirements.yml"
+  ansible.builtin.command:
+    argv: ["{{ playbook_dir }}/../.venv/bin/ansible-galaxy", "collection", "install", "-r", "{{ playbook_dir }}/requirements.yml", "-p", "{{ playbook_dir }}/collections"]
+  args:
+    creates: "{{ playbook_dir }}/collections/ansible_collections/community/docker"
+  become: false
+
+# Docker CLI contexts for every host that exposes dockerd over mTLS: the client
+# material is what the docker role issued into export_root/<host>/docker-tls.
+- name: "Declare docker contexts for remote_api hosts"
+  ansible.builtin.command:
+    argv: >-
+      {{ ['docker', 'context', 'create', item, '--docker',
+          'host=tcp://' ~ hostvars[item].ansible_host ~ ':2376,ca=' ~ controller_root_ca_cert ~
+          ',cert=' ~ export_root ~ '/' ~ item ~ '/docker-tls/cert.pem,key=' ~ export_root ~ '/' ~ item ~ '/docker-tls/key.pem'] }}
+  loop: "{{ controller_remote_api_hosts }}"
+  register: _controller_ctx
+  changed_when: _controller_ctx.rc == 0
+  failed_when: _controller_ctx.rc != 0 and 'already exists' not in _controller_ctx.stderr
+  become: false

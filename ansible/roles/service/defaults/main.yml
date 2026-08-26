@@ -44,3 +44,6 @@ service_backup_script_dir: "/usr/local/sbin"
 # (service_backup_passphrase, vaulted) — the share is a shared NFS export.
 service_backup_key_path: "/root/.mhl-backup.key"
 service_backup_passphrase: "SHOULD_NOT_BE_HERE"
+
+# `-e service_backup_force_run=true` on site.yml runs every declared backup once (codified trigger).
+service_backup_force_run: false

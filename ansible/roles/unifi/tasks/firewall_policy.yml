@@ -26,7 +26,8 @@
       enabled: "{{ _pol_actual.enabled | default(false) | bool }}"
       source_zone_id: "{{ _pol_actual.source.zone_id | default('') }}"
       destination_zone_id: "{{ _pol_actual.destination.zone_id | default('') }}"
-      destination_ports: "{{ ((_pol_actual.destination | default({})).filter | default({}, true)).ports.items | default([]) | map('string') | sort }}"
+      # ['items'] not .items — dot access resolves to the dict method.
+      destination_ports: "{{ ((((_pol_actual.destination | default({})).filter | default({}, true)).ports | default({}, true))['items'] | default([])) | map('string') | sort }}"
       logging: "{{ _pol_actual.logging_enabled | default(false) | bool }}"
 
 - name: "UniFi policy {{ policy.name }}: diff"

@@ -716,6 +716,17 @@ Remaining Phase 3: expiry checks (served certs, LSCR PAT, AirVPN key), controlle
 its toolchain (Q12), compose secret delivery (R-A §4.3), rsyslog/ca-certificates/docker
 fixes from §2.3. Then Phase 4 `observed` hosts, Phase 5 UniFi.
 
+### 2026-08-26 — Phase 4: UISP capture live (PR #31, Inventory #11) — Phase 4 observed hosts complete
+`capture` kind `uisp` on the controller: `POST /nms/api/v2.1/nms/backups/create` → poll
+`GET /nms/backups` until `state == success` → `GET /nms/backups/{id}` (octet-stream) → encrypt
+with the controller backup key → `HomeLabBackup/uisp/uisp_YYYYMMDD.unmsbackup.enc` + `SHA256SUMS`
++ `latest` (keep 14) → `DELETE /nms/backups/{id}` so UISP does not accumulate daily copies. Needs
+a **Super Admin** API token (read-only tokens get 403 on backups — I had wrongly told Mike
+read-only would do); vaulted as `captures[].token`. Verified: checksum OK, decrypts to gzip,
+UISP backup count unchanged after the run. Decisions: `unms` port 80 stays open (remote
+devices); UniFi controller auto-backup stays monthly. Phase 4 observed hosts: Synology ✔,
+UniFi ✔, UISP ✔, iDRAC document-only (powered off).
+
 ### 2026-08-26 — Phase 4: Synology export pulled by MHL; UISP cert outage fixed; traefik mount bug
 **Synology.** DSM's scheduled Configuration Backup needs a Synology account and would back the
 NAS up to itself, so it is dropped. The capture step now does what the DSM UI does (from Mike's

@@ -78,18 +78,41 @@
     # Staleness handling:
     #   required + stale file → copy fails → play stops (correct)
     #   optional + stale file → copy fails → error ignored (skip gracefully)
-    - name: "Import files to {{ inventory_hostname }}"
-      ansible.builtin.copy:
-        src: "{{ hostvars['localhost'].registry[item.name].value }}"
-        dest: "{{ item.dest }}"
-        mode: "{{ item.mode | default('0644') }}"
-        owner: "{{ item.owner | default(ansible_user) }}"
-        group: "{{ item.group | default(ansible_user) }}"
+    # Under --check the controller's export (fetch) writes nothing, so a source may be
+    # absent on the controller even though a real run would produce it (drift F7):
+    # stat it (always runs) and skip such imports in check mode with a report.
+    - name: "Stat import sources on the controller"
+      ansible.builtin.stat:
+        path: "{{ hostvars['localhost'].registry[item.name].value }}"
+      delegate_to: localhost
+      become: false
+      check_mode: false
+      register: _import_src_stat
       loop: "{{ _available_imports }}"
       loop_control:
         label: "{{ item.name }}"
       when: hostvars['localhost'].registry[item.name].type == 'file'
-      ignore_errors: "{{ not (item.required | default(true) | bool) }}"
+    - name: "Report imports whose source is not on the controller yet (check mode)"
+      ansible.builtin.debug:
+        msg: "CHECK MODE: source for {{ item.item.name }} not present on the controller (export runs only on a real apply); import skipped"
+      loop: "{{ _import_src_stat.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.name | default('') }}"
+      when: ansible_check_mode and item.stat is defined and not item.stat.exists
+    - name: "Import files to {{ inventory_hostname }}"
+      ansible.builtin.copy:
+        src: "{{ hostvars['localhost'].registry[item.item.name].value }}"
+        dest: "{{ item.item.dest }}"
+        mode: "{{ item.item.mode | default('0644') }}"
+        owner: "{{ item.item.owner | default(ansible_user) }}"
+        group: "{{ item.item.group | default(ansible_user) }}"
+      loop: "{{ _import_src_stat.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.name | default('') }}"
+      when:
+        - item.stat is defined
+        - item.stat.exists or not ansible_check_mode
+      ignore_errors: "{{ not (item.item.required | default(true) | bool) }}"
 
     # --- Var imports: set as host facts ---
     # After this, the variable is available as {{ var_name }} on the host.

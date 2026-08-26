@@ -86,15 +86,23 @@
 # Docker CLI contexts for every host that exposes dockerd over mTLS: the client
 # material is what the docker role issued into export_root/<host>/docker-tls.
 - name: "Declare docker contexts for remote_api hosts (create, or update when already present)"
+  vars:
+    _ctx_host: "tcp://{{ hostvars[item].ansible_host }}:2376"
+    _ctx_spec: "host={{ _ctx_host }},ca={{ controller_root_ca_cert }},cert={{ export_root }}/{{ item }}/docker-tls/cert.pem,key={{ export_root }}/{{ item }}/docker-tls/key.pem"
+  # Literal block on purpose (newlines are statement ends); a folded scalar with a
+  # more-indented continuation split a command earlier today.
   ansible.builtin.shell:
-    cmd: >-
-      set -o pipefail;
-      spec={{ ('host=tcp://' ~ hostvars[item].ansible_host ~ ':2376,ca=' ~ controller_root_ca_cert ~
-              ',cert=' ~ export_root ~ '/' ~ item ~ '/docker-tls/cert.pem,key=' ~ export_root ~ '/' ~ item ~ '/docker-tls/key.pem') | quote }};
+    cmd: |
+      set -o pipefail
       if docker context inspect {{ item | quote }} >/dev/null 2>&1; then
-        docker context inspect {{ item | quote }} --format '{{ '{{' }}.Endpoints.docker.Host{{ '}}' }}' | grep -qx "tcp://{{ hostvars[item].ansible_host }}:2376" && echo unchanged
-        || { docker context update {{ item | quote }} --docker "$spec" && echo updated; };
-      else docker context create {{ item | quote }} --docker "$spec" && echo created; fi
+        if docker context inspect {{ item | quote }} --format '{{ '{{' }}.Endpoints.docker.Host{{ '}}' }}' | grep -qx {{ _ctx_host | quote }}; then
+          echo unchanged
+        else
+          docker context update {{ item | quote }} --docker {{ _ctx_spec | quote }} && echo updated
+        fi
+      else
+        docker context create {{ item | quote }} --docker {{ _ctx_spec | quote }} && echo created
+      fi
     executable: /bin/bash
   loop: "{{ controller_remote_api_hosts }}"
   register: _controller_ctx

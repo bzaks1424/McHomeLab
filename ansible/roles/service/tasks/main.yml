@@ -190,3 +190,12 @@
     state: present
     remove_orphans: true   # hosts.yml is authoritative: removed services are removed
     pull: "{{ service_pull_policy }}"
+
+# Declarative application settings: services.<name>.api_settings (list of setting
+# groups, each carrying its own `service:` label; see tasks/api_setting.yml).
+# Runs AFTER compose up so the apps are reachable.
+- name: "Enforce declared application API settings"
+  ansible.builtin.include_tasks: api_setting.yml
+  loop: "{{ service_api_settings }}"
+  loop_control:
+    label: "{{ item.service }}"

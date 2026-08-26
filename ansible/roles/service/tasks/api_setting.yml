@@ -1,0 +1,81 @@
+---
+# Idempotent "this API setting equals X" (research/RESEARCH_SYSADMIN_AGENT.md §3 A2).
+# One invocation per declared setting group (`item`):
+#   service: <name>                         # compose service (for the report)
+#   url: ".../api/system/settings"          # write endpoint
+#   method: "POST"                          # write method
+#   headers: {X-API-KEY: "..."}             # optional (vaulted in hosts.yml)
+#   login: {url: ".../auth/login", body: {username: ..., password: ...}}   # optional cookie login
+#   read: {url: "...", path: ""}            # read endpoint (default: url) and optional json_query path
+#   want: {key: value, ...}                 # desired values, compared as strings against the read result
+#   write_body: {...}                       # body to send when different (default: want)
+#   body_format: "json" | "form-urlencoded"
+#   status_code: [200, 204]
+# Reads always run (check_mode: false, changed_when: false) so --check shows the
+# would-change; the write is skipped under --check. Values are never logged.
+- name: "Login to {{ item.service }} API"
+  when: item.login is defined
+  ansible.builtin.uri:
+    url: "{{ item.login.url }}"
+    method: "POST"
+    body: "{{ item.login.body }}"
+    body_format: "form-urlencoded"
+    validate_certs: "{{ item.validate_certs | default(false) }}"
+    status_code: [200, 204]
+  register: _api_login
+  check_mode: false
+  changed_when: false
+  no_log: true
+
+- name: "Read current settings from {{ item.service }}"
+  ansible.builtin.uri:
+    url: "{{ item.read.url | default(item.url) }}"
+    method: "GET"
+    headers: "{{ item.headers | default({}) | combine({'Cookie': (_api_login.cookies_string | default(''))}) }}"
+    validate_certs: "{{ item.validate_certs | default(false) }}"
+    return_content: true
+    status_code: [200]
+  register: _api_current
+  check_mode: false
+  changed_when: false
+  no_log: true
+
+- name: "Extract current values for {{ item.service }}"
+  ansible.builtin.set_fact:
+    _api_actual: "{{ (_api_current.json | default({})) if (item.read.path | default('')) == '' else (_api_current.json | default({}) | json_query(item.read.path)) }}"
+    _api_changed_keys: []
+  no_log: true
+
+- name: "Compare declared vs actual for {{ item.service }}"
+  ansible.builtin.set_fact:
+    _api_changed_keys: "{{ _api_changed_keys + [entry.key] }}"
+  loop: "{{ item.want | dict2items }}"
+  loop_control:
+    loop_var: entry
+    label: "{{ entry.key }}"
+  when: "(_api_actual[entry.key] | default('<absent>') | string) != (entry.value | string)"
+  no_log: true
+
+- name: "Report {{ item.service }} settings that differ from the inventory"
+  ansible.builtin.debug:
+    msg: "{{ item.service }}: {{ _api_changed_keys | length }} setting(s) differ: {{ _api_changed_keys }}"
+  when: _api_changed_keys | length > 0
+
+- name: "Write settings to {{ item.service }}"
+  ansible.builtin.uri:
+    url: "{{ item.url }}"
+    method: "{{ item.method | default('POST') }}"
+    headers: "{{ item.headers | default({}) | combine({'Cookie': (_api_login.cookies_string | default(''))}) }}"
+    body: "{{ item.write_body | default(item.want) }}"
+    body_format: "{{ item.body_format | default('json') }}"
+    validate_certs: "{{ item.validate_certs | default(false) }}"
+    status_code: "{{ item.status_code | default([200, 204]) }}"
+  when: _api_changed_keys | length > 0
+  changed_when: true
+  no_log: true
+
+- name: "Clear per-item API facts"
+  ansible.builtin.set_fact:
+    _api_login: {}
+    _api_current: {}
+    _api_actual: {}

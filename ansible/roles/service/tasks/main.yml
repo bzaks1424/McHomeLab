@@ -89,6 +89,54 @@
         label: "{{ item.name }}"
       notify: "Restart wud"
 
+- name: "Install backup scripts and timers for services that declare backup:"
+  when: service_backup_services | length > 0
+  block:
+    - name: "Check the backup root is a mounted filesystem"
+      ansible.builtin.command:
+        argv: ["mountpoint", "-q", "{{ service_backup_root | dirname }}"]
+      register: _service_backup_mounted
+      changed_when: false
+      failed_when: false
+      check_mode: false
+    - name: "Report when the backup root is not mounted"
+      ansible.builtin.debug:
+        msg: "BACKUP ROOT NOT MOUNTED ({{ service_backup_root | dirname }}): timers installed but will skip until it is"
+      when: _service_backup_mounted.rc != 0
+    - name: "Template backup script"
+      ansible.builtin.template:
+        src: mhl-backup.sh.j2
+        dest: "{{ service_backup_script_dir }}/mhl-backup-{{ item.key }}"
+        mode: "0755"
+      loop: "{{ service_backup_services | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+    - name: "Template backup systemd service"
+      ansible.builtin.template:
+        src: mhl-backup.service.j2
+        dest: "/etc/systemd/system/mhl-backup-{{ item.key }}.service"
+        mode: "0644"
+      loop: "{{ service_backup_services | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+    - name: "Template backup systemd timer"
+      ansible.builtin.template:
+        src: mhl-backup.timer.j2
+        dest: "/etc/systemd/system/mhl-backup-{{ item.key }}.timer"
+        mode: "0644"
+      loop: "{{ service_backup_services | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+    - name: "Enable backup timers"
+      ansible.builtin.systemd:
+        name: "mhl-backup-{{ item.key }}.timer"
+        enabled: true
+        state: started
+        daemon_reload: true
+      loop: "{{ service_backup_services | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
 - name: "Retire files the inventory no longer declares"
   ansible.builtin.file:
     path: "{{ item }}"

@@ -1,0 +1,5 @@
+[Unit]
+Description=McHomeLab backup of {{ item.key }} ({{ ansible_managed }})
+[Service]
+Type=oneshot
+ExecStart={{ service_backup_script_dir }}/mhl-backup-{{ item.key }}

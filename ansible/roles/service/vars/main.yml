@@ -42,3 +42,7 @@ service_wud_tls_provisioner_password: "{{ step_ca_provisioner_password | default
 # Where the client leaf lands on the host running WUD, and inside its container
 service_wud_tls_host_dir: "{{ service_infra_services.wud.config.data_volume | default('') }}/tls"
 service_wud_tls_container_dir: "/wud/tls"
+
+# Services declaring a backup: block (see defaults)
+service_backup_services: >-
+  {{ service_services | dict2items | selectattr('value.backup', 'defined') | items2dict }}

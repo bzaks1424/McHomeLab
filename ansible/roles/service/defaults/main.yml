@@ -40,3 +40,7 @@ service_retire_paths: []
 # the backup root is a mounted filesystem; otherwise the run reports and moves on.
 service_backup_root: "/mnt/Backups/HomeLabBackup"
 service_backup_script_dir: "/usr/local/sbin"
+# Backups are encrypted with a per-host key delivered from the inventory
+# (service_backup_passphrase, vaulted) — the share is a shared NFS export.
+service_backup_key_path: "/root/.mhl-backup.key"
+service_backup_passphrase: "SHOULD_NOT_BE_HERE"

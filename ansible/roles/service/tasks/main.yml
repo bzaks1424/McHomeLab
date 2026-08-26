@@ -103,6 +103,19 @@
       ansible.builtin.debug:
         msg: "BACKUP ROOT NOT MOUNTED ({{ service_backup_root | dirname }}): timers installed but will skip until it is"
       when: _service_backup_mounted.rc != 0
+    - name: "Deliver backup encryption key"
+      ansible.builtin.copy:
+        content: "{{ service_backup_passphrase }}"
+        dest: "{{ service_backup_key_path }}"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+      when: service_backup_passphrase != "SHOULD_NOT_BE_HERE"
+    - name: "Refuse to install backups without an encryption key"
+      ansible.builtin.fail:
+        msg: "service_backup_passphrase is not set for {{ inventory_hostname }} — backups would land on the share in the clear"
+      when: service_backup_passphrase == "SHOULD_NOT_BE_HERE"
     - name: "Template backup script"
       ansible.builtin.template:
         src: mhl-backup.sh.j2

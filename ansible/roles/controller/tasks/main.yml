@@ -7,6 +7,27 @@
     opts: "{{ item.options }}"
     state: mounted
   loop: "{{ controller_nfs_mounts }}"
+  when: not (item.optional | default(false))
+
+- name: "Mount optional NFS shares for Controller (failure reported, not fatal)"
+  ansible.posix.mount:
+    src: "{{ item.src }}"
+    path: "{{ item.path }}"
+    fstype: nfs
+    opts: "{{ item.options }}"
+    state: mounted
+  loop: "{{ controller_nfs_mounts }}"
+  when: item.optional | default(false)
+  register: _controller_optional_mount
+  failed_when: false
+
+- name: "Report optional controller mounts that failed"
+  ansible.builtin.debug:
+    msg: "OPTIONAL MOUNT NOT AVAILABLE: {{ item.item.src }} -> {{ item.item.path }}"
+  loop: "{{ _controller_optional_mount.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.path | default('') }}"
+  when: item is failed
 
 - name: "Controller toolchain"
   ansible.builtin.import_tasks: toolchain.yml

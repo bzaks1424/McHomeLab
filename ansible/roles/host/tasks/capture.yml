@@ -1,0 +1,6 @@
+---
+# Dispatch to the best capture task file (BTF): capture_<type>_<manager>.yml ... capture_all_all.yml
+- name: "Capture: dispatch"
+  ansible.builtin.import_tasks: "tasks/best_task_file.yml"
+  vars:
+    role_action: capture

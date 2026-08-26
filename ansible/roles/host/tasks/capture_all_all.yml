@@ -1,0 +1,5 @@
+---
+# Default capture step: nothing to verify for this host type.
+- name: "No backup capture declared for {{ inventory_hostname }}"
+  ansible.builtin.debug:
+    msg: "capture: nothing declared for {{ inventory_hostname }}"

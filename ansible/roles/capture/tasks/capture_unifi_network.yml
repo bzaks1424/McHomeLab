@@ -1,0 +1,69 @@
+---
+# UniFi Network: the controller keeps its own auto-backups (.unf); pull the newest
+# one plus a human-readable snapshot of every declared object type.
+- name: "UniFi: capture directory"
+  become: false
+  ansible.builtin.file:
+    path: "{{ capture_root }}/unifi/network"
+    state: directory
+    mode: "0755"
+
+- name: "UniFi: list controller auto-backups (read-only)"
+  become: false
+  ansible.builtin.command:
+    argv: ["{{ capture_unifly_bin }}", "system", "backup", "list", "-o", "json"]
+  register: _unifi_backups
+  changed_when: false
+  check_mode: false
+
+- name: "UniFi: newest backup filename"
+  become: false
+  ansible.builtin.set_fact:
+    _unifi_newest: "{{ (_unifi_backups.stdout | from_json | governance_list | sort(attribute='time') | last).filename }}"
+
+- name: "UniFi: download the newest backup when not already captured"
+  become: false
+  ansible.builtin.command:
+    argv: ["{{ capture_unifly_bin }}", "system", "backup", "download", "{{ _unifi_newest }}", "--path", "{{ capture_root }}/unifi/network"]
+  args:
+    creates: "{{ capture_root }}/unifi/network/{{ _unifi_newest }}"
+
+- name: "UniFi: object snapshots (yaml, one file per object type, overwritten daily)"
+  become: false
+  ansible.builtin.shell:
+    cmd: >-
+      {{ capture_unifly_bin }} {{ obj }} list --all -o yaml
+      > "{{ capture_root }}/unifi/network/snapshot-{{ obj | replace(' ', '-') }}.yaml.tmp"
+      && mv "{{ capture_root }}/unifi/network/snapshot-{{ obj | replace(' ', '-') }}.yaml.tmp"
+            "{{ capture_root }}/unifi/network/snapshot-{{ obj | replace(' ', '-') }}.yaml"
+  loop: "{{ capture_unifi_objects }}"
+  loop_control:
+    loop_var: obj
+  changed_when: false
+  failed_when: false
+
+- name: "UniFi: site settings export (raw JSON)"
+  become: false
+  ansible.builtin.shell:
+    cmd: >-
+      {{ capture_unifly_bin }} settings export > "{{ capture_root }}/unifi/network/settings.json.tmp"
+      && mv "{{ capture_root }}/unifi/network/settings.json.tmp" "{{ capture_root }}/unifi/network/settings.json"
+  changed_when: false
+  failed_when: false
+
+- name: "UniFi: manifest and latest"
+  become: false
+  ansible.builtin.shell:
+    cmd: >-
+      cd "{{ capture_root }}/unifi/network" && sha256sum *.unf snapshot-*.yaml settings.json > SHA256SUMS 2>/dev/null;
+      ln -sfn "{{ _unifi_newest }}" latest.unf
+  changed_when: false
+
+- name: "UniFi: prune old backups beyond {{ capture_keep }}"
+  become: false
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      cd "{{ capture_root }}/unifi/network" && ls -1 *.unf 2>/dev/null | sort | head -n -{{ capture_keep }} | xargs -r rm -f
+    executable: /bin/bash
+  changed_when: false

@@ -44,7 +44,7 @@
       - "{{ ca_cert_host_path }}:{{ service_ca_cert_container_path }}:ro"
 {% endif %}
 {% if config.external_routes is defined %}
-      - "{{ service_dir }}/traefik-external.yml:/etc/traefik/dynamic/external.yml:ro"
+      - "{{ service_traefik_dynamic_dir }}:/etc/traefik/dynamic:ro"
 {% endif %}
 {# Opt traefik in to WUD explicitly (config.wud_watch) — needed where the WUD   #}
 {# watcher for this host runs opt-in (WATCHBYDEFAULT=false), e.g. unifi, whose #}

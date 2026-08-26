@@ -1,0 +1,47 @@
+---
+- name: "C5: read UniFi firewall zones (read-only)"
+  ansible.builtin.command:
+    argv: ["{{ governance_unifly_bin }}", "firewall", "zones", "list", "--all", "-o", "json"]
+  register: _gov_zones
+  changed_when: false
+  check_mode: false
+  delegate_to: localhost
+  become: false
+
+- name: "C5: read UniFi firewall policies (read-only)"
+  ansible.builtin.command:
+    argv: ["{{ governance_unifly_bin }}", "firewall", "policies", "list", "--all", "-o", "json"]
+  register: _gov_policies
+  changed_when: false
+  check_mode: false
+  delegate_to: localhost
+  become: false
+
+- name: "C5: resolve zone ids"
+  ansible.builtin.set_fact:
+    _gov_zone_ids: "{{ dict((_gov_zones.stdout | from_json | governance_list) | map(attribute='name') | zip((_gov_zones.stdout | from_json | governance_list) | map(attribute='id'))) }}"
+
+- name: "C5: policies that allow TCP/{{ governance_c5_port }} into {{ governance_c5_dmz_zone }} from outside {{ governance_c5_mgmt_zone }}"
+  ansible.builtin.set_fact:
+    _gov_c5_violations: >-
+      {{ _gov_policies.stdout | from_json | governance_list
+         | selectattr('enabled', 'equalto', true)
+         | selectattr('action', 'equalto', 'Allow')
+         | selectattr('destination.zone_id', 'equalto', _gov_zone_ids[governance_c5_dmz_zone])
+         | rejectattr('source.zone_id', 'equalto', _gov_zone_ids[governance_c5_mgmt_zone])
+         | selectattr('destination.filter', 'defined')
+         | selectattr('destination.filter', 'ne', none)
+         | governance_port_match(governance_c5_port)
+         | map(attribute='name') | list }}
+
+- name: "C5: assert the dockerd mTLS port is not opened into the DMZ (decision record)"
+  ansible.builtin.assert:
+    that: _gov_c5_violations | length == 0
+    fail_msg: >-
+      C5 VIOLATED: firewall policy allows TCP/{{ governance_c5_port }} into {{ governance_c5_dmz_zone }}
+      from a non-{{ governance_c5_mgmt_zone }} zone: {{ _gov_c5_violations }}
+      — decision RESEARCH_WUD_MTLS.md says none should exist
+    success_msg: >-
+      C5 holds: no policy opens TCP/{{ governance_c5_port }} into {{ governance_c5_dmz_zone }}
+      from outside {{ governance_c5_mgmt_zone }}
+      ({{ (_gov_policies.stdout | from_json | governance_list) | length }} policies checked)

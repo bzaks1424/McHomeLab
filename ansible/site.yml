@@ -74,6 +74,15 @@
         ansible_connection: local
         site_role_action: validate
 
+    # --- Capture (observed appliances): verify the appliance's self-backup exists and is fresh ---
+    - name: "Capture step for appliances"
+      when: hostvars[inventory_hostname].provision.type == provision_type_appliance
+      ansible.builtin.include_role:
+        name: host
+        tasks_from: capture
+      vars:
+        role_action: capture
+
     - name: "Host lifecycle: facts, import, configure, export"
       when: hostvars[inventory_hostname].provision.type != provision_type_appliance
       block:

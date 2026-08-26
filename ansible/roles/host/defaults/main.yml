@@ -10,3 +10,8 @@ host_appliance_cert_issuer_org: "McHomeLab CA"
 # HP printer appliance defaults
 host_printer_pfx_password: "temppass"  # no-secret: transient PKCS#12 wrapper, deleted after upload
 host_printer_cert_activation_wait: 3
+
+# Observed appliances (Phase 4): where the appliance's self-backup lands and how fresh it must be.
+host_capture_root: "/mnt/Backups/HomeLabBackup"
+host_capture_dir: "{{ host_capture_root }}/{{ inventory_hostname }}/config"
+host_capture_max_age_days: 2

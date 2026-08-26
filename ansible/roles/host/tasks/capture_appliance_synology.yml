@@ -1,0 +1,38 @@
+---
+# Observed appliance (Phase 4): the Synology backs ITSELF up on DSM's own schedule
+# (Control Panel > Update & Restore > Configuration Backup) into the HomeLabBackup
+# share. This step verifies that export exists and is fresh, and records a manifest;
+# MHL never writes the export. Runs on the controller, which mounts the share.
+- name: "Locate Synology configuration exports"
+  ansible.builtin.find:
+    paths: "{{ host_capture_dir }}"
+    patterns: "*.dss"
+    recurse: false
+  register: _capture_exports
+  failed_when: false
+  delegate_to: localhost
+  become: false
+
+- name: "Warn when no configuration export exists yet"
+  ansible.builtin.debug:
+    msg: >-
+      CAPTURE: no Synology configuration export found in {{ host_capture_dir }} —
+      enable DSM's scheduled Configuration Backup to that folder (research/RESEARCH_SYSADMIN_AGENT.md §13.3)
+  when: (_capture_exports.files | default([])) | length == 0
+
+- name: "Assert the newest export is fresh"
+  when: (_capture_exports.files | default([])) | length > 0
+  vars:
+    _newest: "{{ _capture_exports.files | sort(attribute='mtime') | last }}"
+  block:
+    - name: "Fail when the newest export is older than {{ host_capture_max_age_days }} days"
+      ansible.builtin.assert:
+        that: (now(utc=true).timestamp() - _newest.mtime) < (host_capture_max_age_days | int) * 86400
+        fail_msg: "CAPTURE STALE: newest Synology export {{ _newest.path | basename }} is older than {{ host_capture_max_age_days }} days — DSM's scheduled export is not running"
+        success_msg: "capture: newest Synology export {{ _newest.path | basename }} ({{ ((now(utc=true).timestamp() - _newest.mtime) / 3600) | round(1) }} h old)"
+    - name: "Record manifest for the newest export"
+      ansible.builtin.shell:
+        cmd: "cd {{ host_capture_dir | quote }} && sha256sum {{ _newest.path | basename | quote }} > SHA256SUMS && ln -sfn {{ _newest.path | basename | quote }} latest.dss"
+      changed_when: false
+      delegate_to: localhost
+      become: false

@@ -48,6 +48,11 @@
       ansible.builtin.include_role:
         name: controller
 
+    # --- UniFi Network as code (Phase 5): reconcile declared objects, then assert ---
+    - name: "UniFi objects"
+      ansible.builtin.include_role:
+        name: unifi
+
     # --- Codified non-decisions (assertions, read-only; decision Q8) ---
     - name: "Governance assertions"
       ansible.builtin.include_role:

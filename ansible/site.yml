@@ -48,6 +48,11 @@
       ansible.builtin.include_role:
         name: controller
 
+    # --- Codified non-decisions (assertions, read-only; decision Q8) ---
+    - name: "Governance assertions"
+      ansible.builtin.include_role:
+        name: governance
+
     # --- Export to registry ---
     - name: "Export from controller"
       ansible.builtin.include_role:

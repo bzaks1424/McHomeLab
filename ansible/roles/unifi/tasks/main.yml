@@ -1,32 +1,26 @@
 ---
 # Runs on the controller (unifly profile lives there); never on the UniFi VM.
-- name: "UniFi: read firewall zones (read-only)"
-  ansible.builtin.command:
-    argv: ["{{ unifi_unifly_bin }}", "firewall", "zones", "list", "--all", "-o", "json"]
-  register: _unifi_zones
-  changed_when: false
-  check_mode: false
-  become: false
-  when: unifi_firewall_policies | length > 0
-
-- name: "UniFi: read firewall policies (read-only)"
-  ansible.builtin.command:
-    argv: ["{{ unifi_unifly_bin }}", "firewall", "policies", "list", "--all", "-o", "json"]
-  register: _unifi_policies
-  changed_when: false
-  check_mode: false
-  become: false
-  when: unifi_firewall_policies | length > 0
-
-- name: "UniFi: zone name -> id map"
-  ansible.builtin.set_fact:
-    _unifi_zone_ids: "{{ dict((_unifi_zones.stdout | from_json | governance_list) | map(attribute='name') | zip((_unifi_zones.stdout | from_json | governance_list) | map(attribute='id'))) }}"
-    _unifi_policy_list: "{{ _unifi_policies.stdout | from_json | governance_list }}"
-  when: unifi_firewall_policies | length > 0
-
+# One module call per declared policy: mhl_unifi_firewall_policy (ansible/library)
+# does list -> match by name -> create / update / in sync, check-mode aware.
 - name: "UniFi: reconcile declared firewall policies"
-  ansible.builtin.include_tasks: firewall_policy.yml
+  mhl_unifi_firewall_policy:
+    name: "{{ policy.name }}"
+    action: "{{ policy.action }}"
+    source_zone: "{{ policy.source_zone }}"
+    destination_zone: "{{ policy.destination_zone }}"
+    destination_ports: "{{ policy.destination_ports | default([]) }}"
+    enabled: "{{ policy.enabled | default(true) }}"
+    logging: "{{ policy.logging | default(false) }}"
+    description: "{{ policy.description | default('managed by McHomeLab') }}"
+    unifly_bin: "{{ unifi_unifly_bin }}"
   loop: "{{ unifi_firewall_policies }}"
   loop_control:
     loop_var: policy
     label: "{{ policy.name }}"
+  register: _unifi_policy_results
+  become: false
+
+- name: "UniFi: report"
+  ansible.builtin.debug:
+    msg: "{{ _unifi_policy_results.results | map(attribute='name') | zip(_unifi_policy_results.results | map(attribute='state')) | map('join', ': ') | list }}"
+  when: unifi_firewall_policies | length > 0

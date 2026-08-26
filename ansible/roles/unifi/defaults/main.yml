@@ -1,0 +1,18 @@
+---
+# UniFi Network as code (Phase 5, R-C bring-up pattern): name-keyed objects declared
+# on the controller in hosts.yml are reconciled through the unifly CLI —
+# list -> match by name -> create / update only when a compared field differs.
+# Zones are referenced by NAME; ids never appear in the inventory.
+#   unifi:
+#     firewall_policies:
+#       - name: "ANSIBLE-Block-Internal-Docker-to-DMZ"
+#         action: "block"            # allow | block | reject
+#         source_zone: "Internal"
+#         destination_zone: "Dmz"
+#         destination_ports: ["2376"]
+#         enabled: true
+#         logging: true
+#         description: "C5 (research/RESEARCH_SYSADMIN_AGENT.md §9 Q8)"
+unifi_unifly_bin: "{{ lookup('env', 'HOME') }}/bin/unifly"
+unifi_declared: "{{ hostvars[inventory_hostname].unifi | default({}) }}"
+unifi_firewall_policies: "{{ unifi_declared.firewall_policies | default([]) }}"

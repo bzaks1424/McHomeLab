@@ -1,0 +1,32 @@
+---
+# Runs on the controller (unifly profile lives there); never on the UniFi VM.
+- name: "UniFi: read firewall zones (read-only)"
+  ansible.builtin.command:
+    argv: ["{{ unifi_unifly_bin }}", "firewall", "zones", "list", "--all", "-o", "json"]
+  register: _unifi_zones
+  changed_when: false
+  check_mode: false
+  become: false
+  when: unifi_firewall_policies | length > 0
+
+- name: "UniFi: read firewall policies (read-only)"
+  ansible.builtin.command:
+    argv: ["{{ unifi_unifly_bin }}", "firewall", "policies", "list", "--all", "-o", "json"]
+  register: _unifi_policies
+  changed_when: false
+  check_mode: false
+  become: false
+  when: unifi_firewall_policies | length > 0
+
+- name: "UniFi: zone name -> id map"
+  ansible.builtin.set_fact:
+    _unifi_zone_ids: "{{ dict((_unifi_zones.stdout | from_json | governance_list) | map(attribute='name') | zip((_unifi_zones.stdout | from_json | governance_list) | map(attribute='id'))) }}"
+    _unifi_policy_list: "{{ _unifi_policies.stdout | from_json | governance_list }}"
+  when: unifi_firewall_policies | length > 0
+
+- name: "UniFi: reconcile declared firewall policies"
+  ansible.builtin.include_tasks: firewall_policy.yml
+  loop: "{{ unifi_firewall_policies }}"
+  loop_control:
+    loop_var: policy
+    label: "{{ policy.name }}"

@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Integrity manifest for the governance set.
+#   mhl-manifest gen    write <hooks-dir>/MANIFEST.sha256 (run by the installer)
+#   mhl-manifest check  verify; exit 0 = intact, 1 = VIOLATION (details on stdout), 2 = checker cannot run
+#   mhl-manifest mode   print "verification" (dir + manifest root-owned) or "tripwire"
+#
+# Covered set = the LIVE enforcement set: every installed hook, the user and
+# managed settings files, and a project-local settings.local.json if present.
+# (Repo governance files are governed by git + per-path tokens + the
+# installed==repo check on main, not by this manifest.)
+# The checker FAILS CLOSED: a missing/empty/unreadable/unparseable manifest, a
+# covered file absent from it (smuggled), an entry whose file vanished, or a
+# hash mismatch are all violations. Nothing here is skipped silently.
+#
+# Honest labelling: if the hooks dir and manifest are root-owned and the
+# installer runs under sudo, this is integrity VERIFICATION (the agent's uid
+# cannot reset it). Otherwise it is a TRIPWIRE — an agent could re-run `gen`
+# — still worth having: it catches edits made outside any session and every
+# route nobody enumerated. `mode` says which is in force.
+set -uo pipefail
+REPO=$(realpath -m "${MHL_REPO:-$HOME/workspace/McHomeLab}")
+HOOKS="${MHL_HOOKS_DIR:-$HOME/.mhl/hooks}"
+MAN="$HOOKS/MANIFEST.sha256"
+command -v sha256sum >/dev/null 2>&1 || { echo "mhl-manifest: sha256sum missing"; exit 2; }
+
+covered() {
+  # Installed hooks
+  for f in "$HOOKS"/*.sh; do [ -e "$f" ] && printf '%s\n' "$f"; done
+  # Settings that define what runs (whichever exist)
+  for f in "$HOME/.claude/settings.json" /etc/claude-code/managed-settings.json; do [ -f "$f" ] && printf '%s\n' "$f"; done
+  # The repo's governance files are NOT covered here: they are governed by git,
+  # the per-path tokens, and `make hooks-installed` (installed == repo on main).
+  # Covering them would trip the gate on every token-approved branch edit.
+  # A project-local settings.local.json IS covered when present: it can carry
+  # disableAllHooks and is invisible to git.
+  [ -f "$REPO/.claude/settings.local.json" ] && printf '%s\n' "$REPO/.claude/settings.local.json"
+  return 0
+}
+
+mode() {
+  if [ "$(stat -c %u "$HOOKS" 2>/dev/null)" = "0" ] && [ -f "$MAN" ] && [ "$(stat -c %u "$MAN" 2>/dev/null)" = "0" ]; then echo verification; else echo tripwire; fi
+}
+
+case "${1:-}" in
+  gen)
+    [ -d "$HOOKS" ] || { echo "mhl-manifest: $HOOKS missing"; exit 2; }
+    tmp=$(mktemp) || exit 2
+    covered | sort -u | while IFS= read -r f; do sha256sum "$f"; done > "$tmp" || { rm -f "$tmp"; echo "mhl-manifest: hashing failed"; exit 2; }
+    [ -s "$tmp" ] || { rm -f "$tmp"; echo "mhl-manifest: nothing to cover"; exit 2; }
+    if ! cp "$tmp" "$MAN" 2>/dev/null; then rm -f "$tmp"; echo "mhl-manifest: cannot write $MAN (root-owned dir? run the installer under sudo)"; exit 2; fi
+    rm -f "$tmp"; chmod 0644 "$MAN" 2>/dev/null
+    echo "manifest: $(wc -l < "$MAN") entries -> $MAN (mode: $(mode))" ;;
+  mode) mode ;;
+  check)
+    v=0
+    [ -e "$MAN" ] || { echo "VIOLATION: manifest missing ($MAN) — governance cannot be verified; reinstall from main"; exit 1; }
+    [ -r "$MAN" ] || { echo "VIOLATION: manifest unreadable ($MAN)"; exit 1; }
+    [ -s "$MAN" ] || { echo "VIOLATION: manifest empty ($MAN)"; exit 1; }
+    if [ "$(stat -c %u "$HOOKS")" = "0" ] && [ "$(stat -c %u "$MAN")" != "0" ]; then echo "VIOLATION: hooks dir is root-owned but the manifest is not"; v=1; fi
+    if ! grep -qE '^[0-9a-f]{64}  /' "$MAN" || grep -vqE '^[0-9a-f]{64}  /' "$MAN"; then echo "VIOLATION: manifest unparseable"; exit 1; fi
+    # entries whose file vanished, and hash mismatches
+    while IFS= read -r line; do
+      h=${line%%  *}; f=${line#*  }
+      if [ ! -f "$f" ]; then echo "VIOLATION: listed file missing: $f"; v=1; continue; fi
+      cur=$(sha256sum "$f" | cut -c1-64)
+      [ "$cur" = "$h" ] || { echo "VIOLATION: modified: $f"; v=1; }
+    done < "$MAN"
+    # covered files on disk that the manifest does not list (smuggled)
+    while IFS= read -r f; do grep -qF "  $f" "$MAN" || { echo "VIOLATION: not in manifest: $f"; v=1; }; done < <(covered | sort -u)
+    [ $v -eq 0 ] && echo "manifest: intact ($(wc -l < "$MAN") entries, mode: $(mode))"
+    exit $v ;;
+  *) echo "usage: mhl-manifest gen|check|mode"; exit 2 ;;
+esac

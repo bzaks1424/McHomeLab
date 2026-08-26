@@ -1,0 +1,12 @@
+{
+  "_comment": "Reference hook block for ~/.claude/settings.json (USER scope, Mike's decision 2026-08-25). CAVEAT (verified 2026-08-25 on 2.1.245): a project-local settings.json/settings.local.json with disableAllHooks:true DOES override user-scope hooks; only the managed policy tier cannot be overridden. Compensations: guard_bash denies shell writes to every governance path, session_context/stop_gate/make hooks-installed check every scope for disableAllHooks. Because user-scope hooks run in EVERY session on the machine, each hook exits 0 immediately unless the session cwd is inside McHomeLab or the inventory. Paste the `hooks` object into ~/.claude/settings.json (merge with existing keys). Commands point at the INSTALLED copies (~/.mhl/hooks), populated from main by scripts/mhl-install-hooks.",
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "bash $HOME/.mhl/hooks/session_context.sh", "timeout": 30, "statusMessage": "Injecting lab state"}]}],
+    "PreToolUse": [
+      {"matcher": "Write|Edit|NotebookEdit", "hooks": [{"type": "command", "command": "bash $HOME/.mhl/hooks/guard_writes.sh", "timeout": 10}]},
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "bash $HOME/.mhl/hooks/guard_bash.sh", "timeout": 10}]}
+    ],
+    "PostToolUse": [{"matcher": "Write|Edit", "hooks": [{"type": "command", "command": "bash $HOME/.mhl/hooks/check_edit.sh", "timeout": 60}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "bash $HOME/.mhl/hooks/stop_gate.sh", "timeout": 400, "statusMessage": "make validate + incident + memory gate"}]}]
+  }
+}

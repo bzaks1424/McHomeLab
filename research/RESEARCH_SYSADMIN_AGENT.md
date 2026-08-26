@@ -582,3 +582,84 @@ subscription auth for `claude -p` under systemd.
 - **R-B** `RESEARCH_SYNOLOGY_RB.md` — **no maintained library qualifies** (`stevefulme1.synology_dsm` 0.1.0 has a real idempotency bug in `dsm_nfs_share`; `N4S4/synology-api` is active (v0.9.2, 2026-08-04) but raw, no NFS-privilege coverage; `py-synologydsm-api` active but read-only). Authoritative API shapes come from Synology's own `synology-csi` driver → a small `uri` GET/compare/SET set (NFS share privileges for the two exports) is declarable without a library. Fallback for the rest: DSM `SYNO.Backup.Config.Backup` self-backup to the NFS path + Task Scheduler existence check + manifest. Memory corrected: DSM error 119 = `WEBAPI_ERR_SID_NOT_FOUND`, not a permissions problem.
 - **R-C** `RESEARCH_UNIFI_RC.md` — no collection covers the object set; `hellqvio86.unifi` is the only idempotent one (alpha, Session-API-only, no network/DNS/ACL); the official `ubiquiti.unifi_api` is a non-idempotent codegen passthrough. **Recommendation: thin `mhl.unifi` collection** wrapping `unifly` with name-keyed reconcile (~8 modules; C5 slice ≈ half a day). C5 assertion drafted; `destination.port` field name unverified until a live `policies get` check.
 - **R-D** `RESEARCH_ESCALATION_RD.md` — **primary: git-committed `findings/` queue in the inventory repo; complement: cross-session `SendMessage` to the `personal` session** (v2.1.224+) for warning/critical. Finding schema (JSON + markdown) and Phase 2 PoC drafted; 8 questions for the personal agent's config. §6.5 of this doc (direct HA notify) is superseded by Q10/R-D. The Synology `Backups/claude` share is a separate channel, not this transport.
+
+### 2026-08-25 — step-ca decision (Mike) and the organization strategy
+
+**Rule (Mike):** if an artefact can be dropped into a stateless container and it
+runs as today, it is a **backup → Synology**. If it is used to *spin up* a new
+container, it is **configuration → git**. Applied to step-ca: `config/`,
+`templates/`, `certs/*.crt` → declared from `hosts.yml` (git);
+`secrets/{root_ca_key,intermediate_ca_key,password}` + `db/` → Synology backup.
+Losing util *and* Synology means a new CA and a fleet-wide re-issue via
+`site.yml` (all certs and trust stores are Ansible-managed) — documented as
+the restore procedure's worst case, not hidden.
+
+## 13. Organization strategy — where things live (human-readable, keep current)
+
+### 13.1 Git — `McHomeLab` (public; roles, never secrets)
+```
+ansible/site.yml, roles/, tasks/, group_vars/, filter_plugins/   the product
+ansible/requirements.yml + collections/ (ignored)                pinned deps (make deps)
+ansible/tests/                                                   offline render test (make validate)
+ansible/inventory/test.yml                                       sanitised mock inventory for lint/check
+scripts/mhl-*                                                    operator tools (vault client/file/no-secrets, pr helper)
+.claude/{settings.json,rules/,hooks/,agents/,skills/}            the sysadmin agent itself (tracked)
+CLAUDE.md                                                        binding project rules
+research/                                                        documents of record: RESEARCH_*.md, decisions, execution logs
+archive/                                                         retired code with a README row per item
+```
+### 13.2 Git — `McHomeLab-Inventory` (private; the fleet, secrets vaulted)
+```
+hosts.yml                        single source of truth; every secret an inline !vault (vault-id mhl)
+homepage-*.yaml, recyclarr.yml   side files delivered by registry export/import (secret-bearing ones vaulted)
+incidents/INCIDENT-<date>-<slug>.md   Q1 records: what was done by hand, what must be codified
+findings/                        R-D escalation queue (Phase 2)
+manifests/<host>/<name>.yml      hash/date/size of each Synology-held backup (Phase 4) — the git-side index of 13.3
+unifi/                           UniFi object payloads (Phase 5)
+README.md                        how to run, where the vault password comes from
+```
+### 13.3 Synology — `HomeLabBackup` share (backups: restore-and-run artefacts)
+```
+HomeLabBackup/
+  <host>/<service>/<YYYY-MM-DD>/…      e.g. util/step-ca/2026-08-25/{secrets/,db/}
+  <host>/<service>/latest -> …         symlink or copy of the newest set
+  synology/config/<YYYY-MM-DD>.dss     DSM self-backup (SYNO.Backup.Config)
+  unifi/network/<YYYY-MM-DD>.unf       UniFi controller backup
+  unifi/uisp/<YYYY-MM-DD>.tar.gz       UISP backup
+  idrac/scp/<YYYY-MM-DD>.xml           iDRAC server-config-profile export
+```
+Mounted on the controller (and visible to the agent) at a path declared in
+`hosts.yml` (`controller.provision.mounts`), so nothing outside git decides
+where backups are. Every directory above has a matching `manifests/` entry in
+the inventory repo; a mismatch between manifest and share is a finding.
+Retention: keep the last N (declared per service in `hosts.yml`); the agent
+never deletes a backup without an incident record or a PR.
+### 13.4 Controller local (derived only — `~/.mhl`)
+`registry.json`, `<host>/` exports, `pxe_staging/`, `docker-tls/`: regenerated
+by `site.yml`. The two exceptions are not derived and are created by the
+controller role from inventory: `~/.mhl/vault/mhl.pass` (escrowed in Mike's
+password safe) and `~/.mhl/bin/mhl-vault-client`.
+
+### 2026-08-25 — first end-to-end `/drift` run (read-only, forked drift-checker under dontAsk)
+**No configuration drift between the committed inventory and the live fleet.** Every apparent
+difference traced to the checking tooling, now Phase 3 items:
+- **F1 (medium, `roles/host`)** check mode cannot pass an appliance host: `get_certificate` and the DSM
+  `uri` calls are skipped under `--check`, downstream tasks then fail, and `serial: 1` means media/unifi/
+  printer are never evaluated. Fix: `check_mode: false` on the read-only probes.
+- **F2 (medium, `tests/render.yml`, introduced in PR #5)** `include_vars` of `roles/service/defaults/main.yml`
+  outranks inventory vars, so the render used `traefik:v3.6`/`gluetun:v3` instead of the pinned
+  `v3.7.11`/`v3.41.3`. The deployed files match the inventory; the render did not. Fix: load defaults with
+  lower precedence (play `vars:` from the defaults file) and assert `traefik_image` equals the inventory value.
+- **F3 (low, `/drift` skill)** `docker compose config --hash` is not comparable with the
+  `com.docker.compose.config-hash` label for `network_mode: service:*` containers (compose resolves to
+  `container:<id>` before hashing). Use a text diff of rendered vs deployed compose for those.
+- F4 `~/.mhl/synology/chain.pem` mode 0664 vs declared 0644 (controller-local, fixed by any run).
+- F5 stale `known_hosts` entry for alias `unifi` on the controller (from the reprovision).
+- F6 leftover `util:/opt/docker/compose/diun-watch.yml` — already on the codified-cleanup list (Q2).
+
+### 2026-08-25 — escrow confirmed (Mike)
+The recovery root is Mike's password safe: its own master password (independent
+of the `mhl` vault password), backed up to Google Drive, openable from any
+device. It holds the vault password and is where plaintext originals are
+escrowed before `mhl-vault-file --purge`. Vault password rotation: **hold**
+(no public exposure found; reviewer-reported transcript exposure unverified).

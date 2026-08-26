@@ -1,7 +1,7 @@
 VENV      := .venv/bin
 INVENTORY := ansible/inventory/test.yml
 
-.PHONY: deps lint yamllint ansible-lint syntax check render no-secrets no-secrets-all validate test
+.PHONY: ci deps lint yamllint ansible-lint syntax check render no-secrets no-secrets-all hooks hooks-installed validate test
 
 deps:
 	cd ansible && ../$(VENV)/ansible-galaxy collection install -r requirements.yml -p ./collections --force
@@ -30,7 +30,17 @@ no-secrets:
 no-secrets-all:
 	scripts/mhl-no-secrets
 
+hooks:
+	scripts/hooks/test_hooks.sh
+
+# Machine-dependent: installed copies present, wired from ~/.claude/settings.json, core.hooksPath set.
+hooks-installed:
+	MHL_HOOKS_INSTALLED=1 scripts/hooks/test_hooks.sh
+
+# CI subset (GitHub Actions): everything that needs no machine state.
+ci: lint syntax no-secrets hooks
+
 # The green/red check. "Done" means this passed.
-validate: lint syntax render no-secrets
+validate: lint syntax render no-secrets hooks-installed
 
 test: validate

@@ -1,7 +1,8 @@
 ### CUSTOM ###
 
 TODO.md
-.claude/
+.claude/settings.local.json
+.hooktest.*/
 .ansible/
 
 ### Ansible ###

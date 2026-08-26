@@ -124,6 +124,7 @@
       loop: "{{ service_backup_services | dict2items }}"
       loop_control:
         label: "{{ item.key }}"
+      notify: "Run backup now"
     - name: "Template backup systemd service"
       ansible.builtin.template:
         src: mhl-backup.service.j2
@@ -132,6 +133,7 @@
       loop: "{{ service_backup_services | dict2items }}"
       loop_control:
         label: "{{ item.key }}"
+      notify: "Run backup now"
     - name: "Template backup systemd timer"
       ansible.builtin.template:
         src: mhl-backup.timer.j2

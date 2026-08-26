@@ -1,0 +1,133 @@
+---
+# UISP: ask UISP for a fresh backup (Super Admin token), download it, encrypt it
+# with the controller's backup key, land it under HomeLabBackup/uisp/. Once per UTC
+# day. Declared on the controller:
+#   captures:
+#     - {name: "uisp", kind: "uisp", url: "https://unms.michaelpmcd.com", token: !vault ...}
+# Endpoints verified live 2026-08-26 (UISP 3.0.159, API v2.1): POST /nms/backups/create -> {id,
+# state: in-progress}; GET /nms/backups lists {id, state}; GET /nms/backups/{id} streams the
+# file once state == success (502 before); DELETE /nms/backups/{id} removes it from UISP.
+# Restore: decrypt, then UISP Settings > Backups > Restore.
+- name: "UISP: today's export name"
+  become: false
+  ansible.builtin.set_fact:
+    _uisp_dir: "{{ capture_root }}/uisp"
+    _uisp_today: "{{ capture_root }}/uisp/uisp_{{ now(utc=true).strftime('%Y%m%d') }}.unmsbackup.enc"
+
+- name: "UISP: capture directory"
+  become: false
+  ansible.builtin.file:
+    path: "{{ _uisp_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: "UISP: does today's export already exist"
+  become: false
+  ansible.builtin.stat:
+    path: "{{ _uisp_today }}"
+  register: _uisp_stat
+
+- name: "UISP: backup key present on the controller"
+  become: false
+  ansible.builtin.stat:
+    path: "{{ capture_key_path }}"
+  register: _uisp_key
+
+- name: "UISP: refuse to write plaintext"
+  ansible.builtin.assert:
+    that: _uisp_key.stat.exists
+    fail_msg: "CAPTURE: backup key {{ capture_key_path }} missing on the controller — refusing to write a plaintext UISP backup to the share"
+
+- name: "UISP: create, download, encrypt"
+  when: not _uisp_stat.stat.exists and not ansible_check_mode
+  become: false
+  block:
+    - name: "UISP: request a backup"
+      ansible.builtin.uri:
+        url: "{{ item.url }}/nms/api/v2.1/nms/backups/create"
+        method: "POST"
+        headers: {x-auth-token: "{{ item.token }}"}
+        body_format: "json"
+        body: {}
+        validate_certs: "{{ item.validate_certs | default(true) }}"
+        status_code: [200, 201]
+      register: _uisp_create
+      no_log: true
+      changed_when: false
+
+    - name: "UISP: wait for the backup to finish"
+      ansible.builtin.uri:
+        url: "{{ item.url }}/nms/api/v2.1/nms/backups"
+        headers: {x-auth-token: "{{ item.token }}"}
+        validate_certs: "{{ item.validate_certs | default(true) }}"
+      register: _uisp_list
+      until: (_uisp_list.json | default([]) | selectattr('id', 'equalto', _uisp_create.json.id) | map(attribute='state') | first | default('')) == "success"
+      retries: "{{ capture_uisp_retries }}"
+      delay: "{{ capture_uisp_delay }}"
+      no_log: true
+      changed_when: false
+
+    - name: "UISP: download the backup"
+      ansible.builtin.uri:
+        url: "{{ item.url }}/nms/api/v2.1/nms/backups/{{ _uisp_create.json.id }}"
+        headers: {x-auth-token: "{{ item.token }}"}
+        validate_certs: "{{ item.validate_certs | default(true) }}"
+        dest: "{{ _uisp_today }}.plain"
+        mode: "0600"
+      register: _uisp_download
+      no_log: true
+      changed_when: false
+      failed_when: (_uisp_download.content_type | default('')) != "application/octet-stream"
+
+    - name: "UISP: encrypt, manifest, latest, prune"
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          cd {{ _uisp_dir | quote }}
+          && openssl enc -aes-256-cbc -pbkdf2 -salt -pass "file:{{ capture_key_path }}" -in {{ _uisp_today | quote }}.plain -out {{ _uisp_today | quote }}
+          && rm -f {{ _uisp_today | quote }}.plain
+          && sha256sum uisp_*.unmsbackup.enc > SHA256SUMS
+          && ln -sfn {{ _uisp_today | basename | quote }} latest.unmsbackup.enc
+          && ls -1 uisp_*.unmsbackup.enc | sort | head -n -{{ capture_keep }} | xargs -r rm -f
+        executable: /bin/bash
+      changed_when: true
+  always:
+    - name: "UISP: remove the backup from UISP (the copy lives on the share)"
+      ansible.builtin.uri:
+        url: "{{ item.url }}/nms/api/v2.1/nms/backups/{{ _uisp_create.json.id }}"
+        method: "DELETE"
+        headers: {x-auth-token: "{{ item.token }}"}
+        validate_certs: "{{ item.validate_certs | default(true) }}"
+      when: _uisp_create.json.id is defined
+      no_log: true
+      changed_when: false
+      failed_when: false
+
+    - name: "UISP: remove any plaintext leftover"
+      ansible.builtin.file:
+        path: "{{ _uisp_today }}.plain"
+        state: absent
+      changed_when: false
+
+- name: "UISP: locate exports"
+  become: false
+  ansible.builtin.find:
+    paths: "{{ _uisp_dir }}"
+    patterns: "uisp_*.unmsbackup.enc"
+    recurse: false
+  register: _uisp_exports
+
+- name: "UISP: at least one export exists"
+  ansible.builtin.assert:
+    that: _uisp_exports.files | length > 0
+    fail_msg: "CAPTURE: no UISP export in {{ _uisp_dir }}"
+  when: not ansible_check_mode
+
+- name: "UISP: newest export is fresh"
+  when: not ansible_check_mode
+  vars:
+    _newest: "{{ _uisp_exports.files | sort(attribute='mtime') | last }}"
+  ansible.builtin.assert:
+    that: (now().timestamp() - _newest.mtime) < (capture_max_age_days | int) * 86400
+    fail_msg: "CAPTURE STALE: newest UISP export {{ _newest.path | basename }} is older than {{ capture_max_age_days }} days"
+    success_msg: "capture: newest UISP export {{ _newest.path | basename }} ({{ ((now().timestamp() - _newest.mtime) / 3600) | round(1) }} h old)"

@@ -9,3 +9,8 @@ capture_unifly_bin: "{{ lookup('env', 'HOME') }}/bin/unifly"
 capture_unifi_objects: ["networks", "firewall zones", "firewall policies", "dns", "acl", "traffic-lists"]
 capture_keep: 14
 controller_captures: "{{ hostvars[inventory_hostname].captures | default([]) }}"
+capture_max_age_days: 2
+# Encrypts pulled exports before they land on the shared export (same key as service backups).
+capture_key_path: "{{ lookup('env', 'HOME') }}/.mhl/vault/backup.pass"
+capture_uisp_retries: 60
+capture_uisp_delay: 5

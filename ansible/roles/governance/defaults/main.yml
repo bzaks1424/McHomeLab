@@ -4,8 +4,10 @@
 # is the read engine; the controller never writes to UniFi here.
 governance_unifly_bin: "{{ lookup('env', 'HOME') }}/bin/unifly"
 # C5: dockerd mTLS (2376) on media/unifi has NO compensating firewall rule
-# (research/RESEARCH_WUD_MTLS.md). Assert no enabled Allow policy from a zone
-# other than the management zone reaches the DMZ zone on TCP 2376.
+# (research/RESEARCH_WUD_MTLS.md). Assert no enabled USER-DEFINED Allow policy from a
+# zone other than the management zone reaches the DMZ zone on TCP 2376. Zone-pair
+# defaults (SystemDefined "Allow All") are the zone design and are reported, not asserted
+# (Mike, 2026-08-26). Reply-only allows and allows shadowed by an earlier Block are excused.
 governance_c5_dmz_zone: "Dmz"
 governance_c5_mgmt_zone: "Internal"
 governance_c5_port: "2376"

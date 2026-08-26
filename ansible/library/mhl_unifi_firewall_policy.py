@@ -28,6 +28,7 @@ options:
   logging: {type: bool, default: false}
   description: {type: str, default: "managed by McHomeLab"}
   unifly_bin: {type: path, default: unifly}
+  state: {type: str, default: present, choices: [present, absent], description: absent deletes the matched user-defined policy}
 """
 
 EXAMPLES = r"""
@@ -71,6 +72,10 @@ def plan(params, zones, policies):
         current_raw = find_policy(policies, params["name"], desired["source_zone_id"], desired["destination_zone_id"])
     except AmbiguousMatch as e:
         return {"error": str(e)}
+    if params.get("state", "present") == "absent":
+        if current_raw is None:
+            return {"state": "in sync", "diff": [], "desired": desired, "current": None}
+        return {"state": "present -> delete", "diff": ["state"], "desired": desired, "current": policy_shape(current_raw), "id": current_raw.get("id")}
     if current_raw is None:
         return {"state": "absent -> create", "diff": list(desired), "desired": desired, "current": None}
     current = policy_shape(current_raw)
@@ -99,6 +104,7 @@ def main():
             logging=dict(type="bool", default=False),
             description=dict(type="str", default="managed by McHomeLab"),
             unifly_bin=dict(type="path", default="unifly"),
+            state=dict(type="str", default="present", choices=["present", "absent"]),
         ),
         supports_check_mode=True,
     )
@@ -116,6 +122,8 @@ def main():
         try:
             if p["state"] == "absent -> create":
                 u.write("firewall", "policies", "create", *create_args(module.params["name"], p["desired"], module.params["description"]))
+            elif p["state"] == "present -> delete":
+                u.write("firewall", "policies", "delete", p["id"])
             else:
                 if "destination_ports" in p["diff"]:
                     u.write("firewall", "policies", "update", p["id"], *update_args(p["desired"]))

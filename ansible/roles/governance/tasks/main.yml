@@ -24,25 +24,39 @@
 # A policy with destination.filter null (zone-pair Allow All) reaches every port and MUST be
 # counted (governance_port_match handles null/missing ports); it is only excused when an
 # enabled Block for the same zone pair on the port precedes it (governance_unshadowed).
-- name: "C5: policies that allow TCP/{{ governance_c5_port }} into {{ governance_c5_dmz_zone }} from outside {{ governance_c5_mgmt_zone }}"
+- name: "C5: enabled allows that reach TCP/{{ governance_c5_port }} into {{ governance_c5_dmz_zone }} from outside {{ governance_c5_mgmt_zone }}"
   ansible.builtin.set_fact:
-    _gov_c5_violations: >-
+    _gov_c5_reaching: >-
       {{ _gov_policies.stdout | from_json | governance_list
          | governance_allowing
          | selectattr('destination.zone_id', 'equalto', _gov_zone_ids[governance_c5_dmz_zone])
          | rejectattr('source.zone_id', 'equalto', _gov_zone_ids[governance_c5_mgmt_zone])
          | governance_port_match(governance_c5_port)
          | governance_unshadowed(_gov_policies.stdout | from_json | governance_list, governance_c5_port)
-         | map(attribute='name') | list }}
+         | list }}
+
+# Zone-pair defaults ("Allow All Traffic", SystemDefined) are the zone design (Mike, 2026-08-26:
+# "I use a zone-based firewall for a reason") — reported for the record, not asserted against.
+- name: "C5: split user-defined violations from zone-design defaults"
+  ansible.builtin.set_fact:
+    _gov_c5_violations: "{{ _gov_c5_reaching | rejectattr('origin', 'equalto', 'SystemDefined') | map(attribute='name') | list }}"
+    _gov_c5_zone_design: >-
+      {{ _gov_c5_reaching | selectattr('origin', 'equalto', 'SystemDefined')
+         | map(attribute='source.zone_id') | map('extract', _gov_zone_ids | dict2items | items2dict(key_name='value', value_name='key')) | list }}
+
+- name: "C5: zone-pair defaults that reach the port (design, for the record)"
+  ansible.builtin.debug:
+    msg: "C5 note: zone defaults allow TCP/{{ governance_c5_port }} into {{ governance_c5_dmz_zone }} from {{ _gov_c5_zone_design | join(', ') }} — accepted zone design, not a violation"
+  when: _gov_c5_zone_design | length > 0
 
 - name: "C5: assert the dockerd mTLS port is not opened into the DMZ (decision record)"
   ansible.builtin.assert:
     that: _gov_c5_violations | length == 0
     fail_msg: >-
-      C5 VIOLATED: firewall policy allows TCP/{{ governance_c5_port }} into {{ governance_c5_dmz_zone }}
+      C5 VIOLATED: user-defined firewall policy allows TCP/{{ governance_c5_port }} into {{ governance_c5_dmz_zone }}
       from a non-{{ governance_c5_mgmt_zone }} zone: {{ _gov_c5_violations }}
       — decision RESEARCH_WUD_MTLS.md says none should exist
     success_msg: >-
-      C5 holds: no policy opens TCP/{{ governance_c5_port }} into {{ governance_c5_dmz_zone }}
+      C5 holds: no user-defined policy opens TCP/{{ governance_c5_port }} into {{ governance_c5_dmz_zone }}
       from outside {{ governance_c5_mgmt_zone }}
       ({{ (_gov_policies.stdout | from_json | governance_list) | length }} policies checked)

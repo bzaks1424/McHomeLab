@@ -13,6 +13,7 @@
     logging: "{{ policy.logging | default(false) }}"
     description: "{{ policy.description | default('managed by McHomeLab') }}"
     unifly_bin: "{{ unifi_unifly_bin }}"
+    state: "{{ policy.state | default('present') }}"
   loop: "{{ unifi_firewall_policies }}"
   loop_control:
     loop_var: policy

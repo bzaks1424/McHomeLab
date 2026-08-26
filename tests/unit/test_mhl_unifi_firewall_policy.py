@@ -95,3 +95,17 @@ def test_unknown_zone_is_an_error_not_a_create():
 def test_match_is_exact_name():
     other = dict(LIVE, name="P2")
     assert mod.plan(params(), ZONES, [other])["state"] == "absent -> create"
+
+
+def test_absent_deletes_matched_user_policy():
+    p = mod.plan(params(state="absent"), ZONES, [LIVE])
+    assert p["state"] == "present -> delete" and p["id"] == "pid"
+
+
+def test_absent_when_missing_is_in_sync():
+    assert mod.plan(params(state="absent"), ZONES, [])["state"] == "in sync"
+
+
+def test_absent_never_targets_system_rules():
+    sysrule = dict(LIVE, id="sys", origin="SystemDefined")
+    assert mod.plan(params(state="absent"), ZONES, [sysrule])["state"] == "in sync"

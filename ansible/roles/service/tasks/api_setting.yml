@@ -26,6 +26,9 @@
   check_mode: false
   changed_when: false
   no_log: true
+  until: _api_login.status | default(0) in [200, 204]
+  retries: "{{ item.retries | default(12) }}"
+  delay: "{{ item.delay | default(10) }}"
 
 - name: "Read current settings from {{ item.service }}"
   ansible.builtin.uri:
@@ -39,6 +42,10 @@
   check_mode: false
   changed_when: false
   no_log: true
+  # Apps behind gluetun restart whenever gluetun is recreated: wait for them.
+  until: _api_current.status | default(0) == 200
+  retries: "{{ item.retries | default(12) }}"
+  delay: "{{ item.delay | default(10) }}"
 
 - name: "Extract current values for {{ item.service }}"
   ansible.builtin.set_fact:

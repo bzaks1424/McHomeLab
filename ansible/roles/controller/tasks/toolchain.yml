@@ -7,6 +7,14 @@
   when: >-
     (lookup('ansible.builtin.pipe', 'step version 2>/dev/null || true') | regex_search('Smallstep CLI/([0-9.]+)', '\\1') | default([''], true) | first) != controller_step_cli_version
 
+- name: "Install unifly (pinned release binary, checksum verified)"
+  ansible.builtin.get_url:
+    url: "{{ controller_unifly_url }}"
+    dest: "{{ controller_unifly_bin }}"
+    checksum: "sha256:{{ controller_unifly_sha256 }}"
+    mode: "0755"
+  become: false
+
 - name: "Install docker CLI (for --context reads and compose config)"
   ansible.builtin.apt:
     name: ["docker-ce-cli", "docker-compose-plugin"]

@@ -20,6 +20,9 @@ host_capture_keep: 14
 # and encrypted with the controller's backup key before landing on the shared export.
 host_capture_key_path: "{{ lookup('env', 'HOME') }}/.mhl/vault/backup.pass"
 host_capture_dsm_base: "https://{{ ansible_host }}:{{ host_synology_dsm_port }}/webapi/entry.cgi"
-host_capture_validate_certs: false
+# The DSM cert is step-ca managed and the controller trusts the lab CA.
+host_capture_validate_certs: true
 host_capture_dsm_retries: 60
 host_capture_dsm_delay: 2
+# Plaintext download lives here (controller local disk, 0700) and is shredded; never on the share.
+host_capture_tmp_dir: "{{ lookup('env', 'HOME') }}/.mhl/tmp"

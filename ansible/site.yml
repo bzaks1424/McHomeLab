@@ -13,13 +13,16 @@
 - name: "Initialize"
   hosts: localhost
   connection: local
+  vars:
+    # The one place the controller's inventory name is spelled (play 1 targets it by pattern).
+    controller_host: "controller"
   gather_facts: false
   tasks:
     - name: "Sort hosts by priority"
       ansible.builtin.set_fact:
         build_hosts: >-
           {{ groups['all']
-             | reject('equalto', 'controller')
+             | reject('equalto', controller_host)
              | map('extract', hostvars)
              | sort(attribute='priority')
              | map(attribute='inventory_hostname')

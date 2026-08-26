@@ -1,30 +1,17 @@
 # McHomeLab — binding project rules
 
-These are non-negotiable. Hooks enforce what a command or path alone can decide
-(`.claude/hooks/`, tested by `scripts/hooks/test_hooks.sh`); the rest is on you.
-**Live enforcement = user-scope hooks (`~/.claude/settings.json`, Mike's file;
-reference block `scripts/hooks/user-settings-hooks.json`) running the installed
-copies in `~/.mhl/hooks/`**, populated from `main` by `scripts/mhl-install-hooks`
-after a governance PR merges. They run in every session on this machine and
-decide by command text and target path, never by session cwd. Known limit
-(verified 2.1.245): a project-local `settings(.local).json` with
-`disableAllHooks: true` DOES override user-scope hooks; the Bash guard denies
-shell writes to those files and the session/stop gates check every scope for
-the flag — only a root-owned managed policy file removes the class entirely.
-Editing `.claude/hooks/*` on a branch changes nothing until installed;
-`make hooks-installed` verifies what is actually enforcing. Files that define
-what runs unprompted or what the guards check (`.claude/*` other than `hooks/`,
-`CLAUDE.md`, `Makefile`, the harness, git hooks, installer, the secrets gate,
-lint configs, the CI workflow, `.mcp.json`) are edited only after Mike runs
-`touch ~/.mhl/approvals/<file>` (one-shot, 30 min) and still land via PR. A
-read-only command whose text merely mentions a governance path may be denied
-by the Bash guard — write it to a file in the scratchpad and run that, or use
-`cat`/`grep`.
-Fleet-touching commands are always invoked directly (never via `make`), so the
-Bash guard sees every real command.
-The global `~/.claude/CLAUDE.md` still applies; this file is more specific.
-Design, decisions and the organization strategy: `research/RESEARCH_SYSADMIN_AGENT.md`
-(§9 decisions, §13 where things live). Ideology: `research/RESEARCH_ANSIBLE_GOVERNANCE.md` §0.
+These are non-negotiable. Enforcement is the PR workflow plus `make validate`
+(and `make restore-test` for backups); there are no Claude Code hooks — the
+hook harness was retired on 2026-08-25 (`archive/governance-hooks/`, reasons in
+its README row). The git `pre-push` hook (`scripts/git-hooks`) still refuses
+pushes to the default branch in both repos. Governance files (`.claude/*`,
+`CLAUDE.md`, `Makefile`, the secrets gate, lint configs, the CI workflow,
+`.mcp.json`) change only via PR, like everything else. Fleet-touching commands
+are invoked directly (never via `make`) so the command text is visible in the
+transcript. The global `~/.claude/CLAUDE.md` still applies; this file is more
+specific. Design, decisions and the organization strategy:
+`research/RESEARCH_SYSADMIN_AGENT.md` (§9 decisions, §13 where things live).
+Ideology: `research/RESEARCH_ANSIBLE_GOVERNANCE.md` §0.
 
 1. **No change to the lab without revision history.** Anything that changes a
    host, container, appliance, network device, certificate, or the controller's
@@ -42,8 +29,9 @@ Design, decisions and the organization strategy: `research/RESEARCH_SYSADMIN_AGE
    reviews. Never commit on the default branch, never push to it. `site.yml`
    (without `--check`) runs only from a committed tree. Never `--limit site.yml`.
 4. **`make validate` is "done".** yamllint, ansible-lint (`production`), syntax,
-   offline render + `docker compose config`, no-secrets, hook tests. Red output
-   is quoted verbatim, never summarised; a check is never loosened to pass.
+   offline render + `docker compose config`, no-secrets, secrets matrix, unit
+   tests. `make restore-test` rehearses every backup type from the share. Red
+   output is quoted verbatim, never summarised; a check is never loosened to pass.
 5. **Secrets.** Every secret is an inline `!vault` value (vault-id `mhl`) in
    `hosts.yml` or a vault-encrypted side file. Password source:
    `~/.mhl/bin/mhl-vault-client` → `~/.mhl/vault/mhl.pass` (escrowed in Mike's
@@ -54,8 +42,9 @@ Design, decisions and the organization strategy: `research/RESEARCH_SYSADMIN_AGE
 6. **Three buckets.** Source (roles, `hosts.yml`) is hand-edited via PR. Derived
    (`~/.mhl`, rendered compose, `ansible/collections`) is regenerated, never
    edited. Ephemeral (container health, DNS answers) is observed only.
-   Backups (restore-and-run artefacts) live on the Synology `HomeLabBackup`
-   share with a manifest in the inventory repo; configuration lives in git.
+   Backups (restore-and-run artefacts) live encrypted on the Synology
+   `HomeLabBackup` share with a `SHA256SUMS` manifest beside them;
+   configuration lives in git.
 7. **The live system is the authority.** Read it before asserting; confirm
    first-pass output against a second source; report disagreement between
    live state and documents, never average them.

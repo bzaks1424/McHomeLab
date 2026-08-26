@@ -21,17 +21,18 @@
   ansible.builtin.set_fact:
     _gov_zone_ids: "{{ dict((_gov_zones.stdout | from_json | governance_list) | map(attribute='name') | zip((_gov_zones.stdout | from_json | governance_list) | map(attribute='id'))) }}"
 
+# A policy with destination.filter null (zone-pair Allow All) reaches every port and MUST be
+# counted (governance_port_match handles null/missing ports); it is only excused when an
+# enabled Block for the same zone pair on the port precedes it (governance_unshadowed).
 - name: "C5: policies that allow TCP/{{ governance_c5_port }} into {{ governance_c5_dmz_zone }} from outside {{ governance_c5_mgmt_zone }}"
   ansible.builtin.set_fact:
     _gov_c5_violations: >-
       {{ _gov_policies.stdout | from_json | governance_list
-         | selectattr('enabled', 'equalto', true)
-         | selectattr('action', 'equalto', 'Allow')
+         | governance_allowing
          | selectattr('destination.zone_id', 'equalto', _gov_zone_ids[governance_c5_dmz_zone])
          | rejectattr('source.zone_id', 'equalto', _gov_zone_ids[governance_c5_mgmt_zone])
-         | selectattr('destination.filter', 'defined')
-         | selectattr('destination.filter', 'ne', none)
          | governance_port_match(governance_c5_port)
+         | governance_unshadowed(_gov_policies.stdout | from_json | governance_list, governance_c5_port)
          | map(attribute='name') | list }}
 
 - name: "C5: assert the dockerd mTLS port is not opened into the DMZ (decision record)"

@@ -89,12 +89,6 @@
         label: "{{ item.name }}"
       notify: "Restart wud"
 
-- name: "Restart services whose secret files changed"
-  ansible.builtin.command:
-    argv: ["docker", "compose", "--project-directory", "{{ service_dir }}", "restart", "{{ item }}"]
-  loop: "{{ service_secret_restart | default([]) }}"
-  changed_when: true
-
 - name: "Install backup scripts and timers for services that declare backup:"
   when: service_backup_services | length > 0
   block:
@@ -173,7 +167,16 @@
     path: "{{ item }}"
     state: absent
   loop: "{{ service_retire_paths }}"
-  when: item is match('^/opt/')  # never outside the container tree
+  # only inside the container tree, never the secrets dir, no path tricks
+  when:
+    - item is match('^/opt/')
+    - "'..' not in item"
+    - not item.startswith(service_secrets_dir)
+
+- name: "Refuse retire paths outside the container tree"
+  ansible.builtin.assert:
+    that: service_retire_paths | reject('match', '^/opt/') | list | length == 0
+    fail_msg: "service_retire_paths must be under /opt: {{ service_retire_paths | reject('match', '^/opt/') | list }}"
 
 - name: "Deliver compose secrets as 0400 files (never in the compose file)"
   when: service_secret_manifest | length > 0
@@ -235,6 +238,16 @@
     state: present
     remove_orphans: true   # hosts.yml is authoritative: removed services are removed
     pull: "{{ service_pull_policy }}"
+
+# A changed secret file does not change the compose config-hash and the running container
+# keeps the OLD inode (Ansible writes by rename): restart exactly those services, after the
+# deploy so they exist. Services that share gluetun's netns are restarted with it.
+- name: "Restart services whose secret files changed"
+  community.docker.docker_compose_v2:
+    project_src: "{{ service_dir }}"
+    state: restarted
+    services: "{{ (service_secret_restart | default([])) + (service_gluetun_tunneled.keys() | list if 'gluetun' in (service_secret_restart | default([])) else []) }}"
+  when: service_secret_restart | default([]) | length > 0
 
 # Declarative application settings: services.<name>.api_settings (list of setting
 # groups, each carrying its own `service:` label; see tasks/api_setting.yml).

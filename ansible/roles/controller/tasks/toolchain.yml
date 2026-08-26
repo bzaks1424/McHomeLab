@@ -1,9 +1,29 @@
 ---
 # The controller owns its own toolchain (decision Q12): a rebuilt controller
 # gets everything site.yml needs from this role, not from hand installs.
+- name: "User bin and download directories"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  become: false
+  loop:
+    - "{{ controller_unifly_bin | dirname }}"
+    - "{{ controller_step_cli_download | dirname }}"
+
+- name: "Fetch step CLI (pinned .deb, checksum verified)"
+  ansible.builtin.get_url:
+    url: "{{ controller_step_cli_deb }}"
+    dest: "{{ controller_step_cli_download }}"
+    checksum: "sha256:{{ controller_step_cli_sha256 }}"
+    mode: "0644"
+  become: false
+  when: >-
+    (lookup('ansible.builtin.pipe', 'step version 2>/dev/null || true') | regex_search('Smallstep CLI/([0-9.]+)', '\\1') | default([''], true) | first) != controller_step_cli_version
+
 - name: "Install step CLI (pinned .deb)"
   ansible.builtin.apt:
-    deb: "{{ controller_step_cli_deb }}"
+    deb: "{{ controller_step_cli_download }}"
   when: >-
     (lookup('ansible.builtin.pipe', 'step version 2>/dev/null || true') | regex_search('Smallstep CLI/([0-9.]+)', '\\1') | default([''], true) | first) != controller_step_cli_version
 
@@ -15,11 +35,22 @@
     mode: "0755"
   become: false
 
+- name: "Docker apt repository must be configured (the docker role owns it on hosts; a rebuilt controller needs it too)"
+  ansible.builtin.stat:
+    path: "/etc/apt/sources.list.d/docker.list"
+  register: _controller_docker_repo
+  when: controller_manage_docker_cli | bool
+
 - name: "Install docker CLI (for --context reads and compose config)"
   ansible.builtin.apt:
     name: ["docker-ce-cli", "docker-compose-plugin"]
     state: present
-  when: controller_manage_docker_cli | bool
+  when: controller_manage_docker_cli | bool and _controller_docker_repo.stat.exists
+
+- name: "Report a missing docker apt repository"
+  ansible.builtin.debug:
+    msg: "TOOLCHAIN: /etc/apt/sources.list.d/docker.list missing — docker CLI not installed; add the Docker apt repo (see roles/docker) on this controller"
+  when: controller_manage_docker_cli | bool and not _controller_docker_repo.stat.exists
 
 - name: "Ensure vault directories exist with strict modes"
   ansible.builtin.file:
@@ -54,14 +85,18 @@
 
 # Docker CLI contexts for every host that exposes dockerd over mTLS: the client
 # material is what the docker role issued into export_root/<host>/docker-tls.
-- name: "Declare docker contexts for remote_api hosts"
-  ansible.builtin.command:
-    argv: >-
-      {{ ['docker', 'context', 'create', item, '--docker',
-          'host=tcp://' ~ hostvars[item].ansible_host ~ ':2376,ca=' ~ controller_root_ca_cert ~
-          ',cert=' ~ export_root ~ '/' ~ item ~ '/docker-tls/cert.pem,key=' ~ export_root ~ '/' ~ item ~ '/docker-tls/key.pem'] }}
+- name: "Declare docker contexts for remote_api hosts (create, or update when already present)"
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      spec={{ ('host=tcp://' ~ hostvars[item].ansible_host ~ ':2376,ca=' ~ controller_root_ca_cert ~
+              ',cert=' ~ export_root ~ '/' ~ item ~ '/docker-tls/cert.pem,key=' ~ export_root ~ '/' ~ item ~ '/docker-tls/key.pem') | quote }};
+      if docker context inspect {{ item | quote }} >/dev/null 2>&1; then
+        docker context inspect {{ item | quote }} --format '{{ '{{' }}.Endpoints.docker.Host{{ '}}' }}' | grep -qx "tcp://{{ hostvars[item].ansible_host }}:2376" && echo unchanged
+        || { docker context update {{ item | quote }} --docker "$spec" && echo updated; };
+      else docker context create {{ item | quote }} --docker "$spec" && echo created; fi
+    executable: /bin/bash
   loop: "{{ controller_remote_api_hosts }}"
   register: _controller_ctx
-  changed_when: _controller_ctx.rc == 0
-  failed_when: _controller_ctx.rc != 0 and 'already exists' not in _controller_ctx.stderr
+  changed_when: "'unchanged' not in _controller_ctx.stdout"
   become: false

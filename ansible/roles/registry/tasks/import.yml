@@ -8,8 +8,8 @@
 #   - dest:     destination path on host (required for file imports)
 #   - required: whether import must exist in registry (default: true)
 #   - mode:     file permissions (default: '0644')
-#   - owner:    file owner (default: ansible_user)
-#   - group:    file group (default: ansible_user)
+#   - owner:    file owner (default: ansible_user when set, else the connecting user)
+#   - group:    file group (default: ansible_user when set, else the connecting user)
 #
 # The 'type' is determined by the registry entry, not the import declaration.
 # File imports: copy from controller to host
@@ -104,8 +104,8 @@
         src: "{{ hostvars['localhost'].registry[item.item.name].value }}"
         dest: "{{ item.item.dest }}"
         mode: "{{ item.item.mode | default('0644') }}"
-        owner: "{{ item.item.owner | default(ansible_user) }}"
-        group: "{{ item.item.group | default(ansible_user) }}"
+        owner: "{{ item.item.owner | default(ansible_user | default(omit)) }}"
+        group: "{{ item.item.group | default(ansible_user | default(omit)) }}"
       loop: "{{ _import_src_stat.results | default([]) }}"
       loop_control:
         label: "{{ item.item.name | default('') }}"

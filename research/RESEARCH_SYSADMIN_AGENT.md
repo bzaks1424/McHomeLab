@@ -286,12 +286,12 @@ revisioned artifact without pretending they are declarable.
 ```
 CLAUDE.md                       # project-level binding rules (today there is none)
 .claude/rules/governance.md     # ideology as directives; paths-scoped rules for hosts.yml
-.claude/settings.json           # curated: deny/ask/allow + hooks registration (replaces 876-entry file)
-.claude/hooks/guard_bash.sh     # PreToolUse[Bash]: deny ad-hoc mutation of lab hosts
-.claude/hooks/guard_writes.sh   # PreToolUse[Write|Edit]: deny edits to derived paths (~/.mhl, rendered files)
-.claude/hooks/check_edit.sh     # PostToolUse: yamllint/ansible-lint the touched file
-.claude/hooks/stop_gate.sh      # Stop: make validate green + memory touched, fail-open once/day
-.claude/hooks/session_context.sh# SessionStart: git state of both repos, last drift report age
+.claude/settings.json           # curated allow list (deny/ask removed 2026-08-26; hooks RETIRED 2026-08-25 -> archive/governance-hooks)
+archive/governance-hooks/claude-hooks/guard_bash.sh  # RETIRED     # PreToolUse[Bash]: deny ad-hoc mutation of lab hosts
+archive/governance-hooks/claude-hooks/guard_writes.sh  # RETIRED   # PreToolUse[Write|Edit]: deny edits to derived paths (~/.mhl, rendered files)
+archive/governance-hooks/claude-hooks/check_edit.sh  # RETIRED     # PostToolUse: yamllint/ansible-lint the touched file
+archive/governance-hooks/claude-hooks/stop_gate.sh  # RETIRED      # Stop: make validate green + memory touched, fail-open once/day
+archive/governance-hooks/claude-hooks/session_context.sh  # RETIRED# SessionStart: git state of both repos, last drift report age
 .claude/agents/drift-checker.md # read-only subagent, own hooks, dontAsk
 .claude/agents/renderer.md      # render-only subagent
 .claude/skills/apply-site/      # disable-model-invocation: true — human-only apply
@@ -552,7 +552,7 @@ stays in §6.5 for when Mike is ready.
 
 ---
 
-## 10. Provenance and what was not verified
+## 10b. Provenance and what was not verified
 
 Verified live today: repo contents, inventory shape (values withheld),
 `.claude/settings.json` shape, the `~/workspace/claude` hooks and tests,
@@ -614,7 +614,7 @@ hosts.yml                        single source of truth; every secret an inline 
 homepage-*.yaml, recyclarr.yml   side files delivered by registry export/import (secret-bearing ones vaulted)
 incidents/INCIDENT-<date>-<slug>.md   Q1 records: what was done by hand, what must be codified
 findings/                        R-D escalation queue (Phase 2)
-manifests/<host>/<name>.yml      hash/date/size of each Synology-held backup (Phase 4) — the git-side index of 13.3
+(no manifests/ dir)             manifests live as SHA256SUMS beside each backup on the share (capture roles), not in git
 unifi/                           (dropped — UniFi objects live in hosts.yml under controller.unifi; see §12 2026-08-26 upsert/adopt)
 README.md                        how to run, where the vault password comes from
 ```

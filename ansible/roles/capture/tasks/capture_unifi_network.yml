@@ -1,12 +1,33 @@
 ---
-# UniFi Network: the controller keeps its own auto-backups (.unf); pull the newest
-# one plus a human-readable snapshot of every declared object type.
-- name: "UniFi: capture directory"
+# UniFi Network: the controller keeps its own auto-backups (.unf); pull the newest one
+# plus a human-readable snapshot of every declared object type and the settings export.
+# .unf and settings.json carry controller secrets (admin hashes, x_ssh_password, PSKs) so
+# both are encrypted with the controller backup key before they touch the shared export;
+# the object snapshots hold no secrets and stay readable YAML. Plaintext only ever exists
+# in a private temp dir on the controller's local disk.
+- name: "UniFi: backup key present on the controller"
+  become: false
+  ansible.builtin.stat:
+    path: "{{ capture_key_path }}"
+  register: _unifi_key
+
+- name: "UniFi: refuse to write plaintext"
+  ansible.builtin.assert:
+    that: _unifi_key.stat.exists
+    fail_msg: "CAPTURE: backup key {{ capture_key_path }} missing on the controller — refusing to write UniFi backups to the share"
+
+- name: "UniFi: capture and temp directories"
   become: false
   ansible.builtin.file:
-    path: "{{ capture_root }}/unifi/network"
+    path: "{{ dir.path }}"
     state: directory
-    mode: "0755"
+    mode: "{{ dir.mode }}"
+  loop:
+    - {path: "{{ capture_root }}/unifi/network", mode: "0755"}
+    - {path: "{{ capture_tmp_dir }}", mode: "0700"}
+  loop_control:
+    loop_var: dir
+    label: "{{ dir.path }}"
 
 - name: "UniFi: list controller auto-backups (read-only)"
   become: false
@@ -16,53 +37,85 @@
   changed_when: false
   check_mode: false
 
-- name: "UniFi: newest backup filename"
+- name: "UniFi: newest backup"
   become: false
   ansible.builtin.set_fact:
-    _unifi_newest: "{{ (_unifi_backups.stdout | from_json | governance_list | sort(attribute='time') | last).filename }}"
+    _unifi_newest_entry: "{{ _unifi_backups.stdout | from_json | governance_list | sort(attribute='time') | last }}"
 
-- name: "UniFi: download the newest backup when not already captured"
+- name: "UniFi: newest backup filename and age"
   become: false
-  ansible.builtin.command:
-    argv: ["{{ capture_unifly_bin }}", "system", "backup", "download", "{{ _unifi_newest }}", "--path", "{{ capture_root }}/unifi/network"]
-  args:
-    creates: "{{ capture_root }}/unifi/network/{{ _unifi_newest }}"
+  ansible.builtin.set_fact:
+    _unifi_newest: "{{ _unifi_newest_entry.filename }}"
+    # `time` is epoch milliseconds (verified 2026-08-26); now() is naive local -> correct epoch
+    _unifi_newest_age_days: "{{ ((now().timestamp() - (_unifi_newest_entry.time | int) / 1000) / 86400) | round(1) }}"
 
-- name: "UniFi: object snapshots (yaml, one file per object type, overwritten daily)"
-  become: false
-  vars:
-    _snap: "{{ capture_root }}/unifi/network/snapshot-{{ obj | replace(' ', '-') }}.yaml"
-  # Single line on purpose: a more-indented continuation inside a folded scalar
-  # keeps its newline, which split the mv into two shell commands (2026-08-26).
-  ansible.builtin.shell:
-    cmd: '{{ capture_unifly_bin }} {{ obj }} list --all -o yaml > "{{ _snap }}.tmp" && mv "{{ _snap }}.tmp" "{{ _snap }}"'
-  loop: "{{ capture_unifi_objects }}"
-  loop_control:
-    loop_var: obj
-  changed_when: false
+- name: "UniFi: controller auto-backup is not stale"
+  ansible.builtin.assert:
+    that: (_unifi_newest_age_days | float) < (item.max_age_days | default(capture_max_age_days) | float)
+    fail_msg: >-
+      CAPTURE STALE: newest UniFi controller auto-backup {{ _unifi_newest }} is
+      {{ _unifi_newest_age_days }} days old (limit {{ item.max_age_days | default(capture_max_age_days) }})
+      — the controller's backup schedule has stopped
+    success_msg: "capture: newest UniFi controller auto-backup {{ _unifi_newest }} ({{ _unifi_newest_age_days }} days old)"
 
-- name: "UniFi: site settings export (raw JSON)"
+- name: "UniFi: is the newest backup already captured"
   become: false
-  ansible.builtin.shell:
-    cmd: >-
-      {{ capture_unifly_bin }} settings export > "{{ capture_root }}/unifi/network/settings.json.tmp"
-      && mv "{{ capture_root }}/unifi/network/settings.json.tmp" "{{ capture_root }}/unifi/network/settings.json"
-  changed_when: false
-  failed_when: false
+  ansible.builtin.stat:
+    path: "{{ capture_root }}/unifi/network/{{ _unifi_newest }}.enc"
+  register: _unifi_captured
 
-- name: "UniFi: manifest and latest"
+- name: "UniFi: pull, encrypt, snapshot"
+  when: not ansible_check_mode
   become: false
-  ansible.builtin.shell:
-    cmd: >-
-      cd "{{ capture_root }}/unifi/network" && sha256sum *.unf snapshot-*.yaml settings.json > SHA256SUMS 2>/dev/null;
-      ln -sfn "{{ _unifi_newest }}" latest.unf
-  changed_when: false
+  block:
+    - name: "UniFi: download the newest backup to the private temp dir"
+      ansible.builtin.command:
+        argv: ["{{ capture_unifly_bin }}", "system", "backup", "download", "{{ _unifi_newest }}", "--path", "{{ capture_tmp_dir }}"]
+      when: not _unifi_captured.stat.exists
+      changed_when: true
 
-- name: "UniFi: prune old backups beyond {{ capture_keep }}"
-  become: false
-  ansible.builtin.shell:
-    cmd: >-
-      set -o pipefail;
-      cd "{{ capture_root }}/unifi/network" && ls -1 *.unf 2>/dev/null | sort | head -n -{{ capture_keep }} | xargs -r rm -f
-    executable: /bin/bash
-  changed_when: false
+    - name: "UniFi: encrypt the backup onto the share"
+      ansible.builtin.command:
+        argv: ["openssl", "enc", "-aes-256-cbc", "-pbkdf2", "-salt", "-pass", "file:{{ capture_key_path }}",
+               "-in", "{{ capture_tmp_dir }}/{{ _unifi_newest }}", "-out", "{{ capture_root }}/unifi/network/{{ _unifi_newest }}.enc"]
+      when: not _unifi_captured.stat.exists
+      changed_when: true
+
+    - name: "UniFi: object snapshots (yaml, one file per object type, overwritten daily)"
+      vars:
+        _snap: "{{ capture_root }}/unifi/network/snapshot-{{ obj | replace(' ', '-') }}.yaml"
+      # Single line on purpose: a more-indented continuation inside a folded scalar
+      # keeps its newline, which split the mv into two shell commands (2026-08-26).
+      ansible.builtin.shell:
+        cmd: '{{ capture_unifly_bin }} {{ obj }} list --all -o yaml > "{{ _snap }}.tmp" && mv "{{ _snap }}.tmp" "{{ _snap }}"'
+      loop: "{{ capture_unifi_objects }}"
+      loop_control:
+        loop_var: obj
+      changed_when: false
+
+    - name: "UniFi: settings export, encrypted (contains controller secrets)"
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          {{ capture_unifly_bin }} settings export -o json
+          | openssl enc -aes-256-cbc -pbkdf2 -salt -pass "file:{{ capture_key_path }}" -out "{{ capture_root }}/unifi/network/settings.json.enc.tmp"
+          && mv "{{ capture_root }}/unifi/network/settings.json.enc.tmp" "{{ capture_root }}/unifi/network/settings.json.enc"
+        executable: /bin/bash
+      changed_when: false
+
+    - name: "UniFi: prune, then manifest and latest"
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          cd {{ (capture_root ~ '/unifi/network') | quote }}
+          && ls -1 autobackup_*.unf.enc | sort -t_ -k3,4 | head -n -{{ item.keep | default(capture_keep) }} | xargs -r rm -f
+          && ln -sfn {{ (_unifi_newest ~ '.enc') | quote }} latest.unf.enc
+          && sha256sum autobackup_*.unf.enc settings.json.enc snapshot-*.yaml > SHA256SUMS
+        executable: /bin/bash
+      changed_when: false
+  always:
+    - name: "UniFi: shred plaintext in the temp dir"
+      ansible.builtin.shell:
+        cmd: 'find {{ capture_tmp_dir | quote }} -maxdepth 1 -type f -name "*.unf" -exec shred -u -n 1 {} +'
+      changed_when: false
+      failed_when: false

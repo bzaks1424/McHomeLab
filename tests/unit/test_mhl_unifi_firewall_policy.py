@@ -16,7 +16,7 @@ mod = load("mhl_unifi_firewall_policy", ROOT / "ansible" / "library" / "mhl_unif
 
 ZONES = [{"name": "Internal", "id": "i"}, {"name": "Dmz", "id": "d"}]
 LIVE = {
-    "id": "pid", "name": "P", "action": "Block", "enabled": True, "logging_enabled": True,
+    "id": "pid", "name": "P", "origin": "UserDefined", "action": "Block", "enabled": True, "logging_enabled": True,
     "source": {"zone_id": "i", "filter": None},
     "destination": {"zone_id": "d", "filter": {"kind": "port", "ports": {"kind": "values", "items": ["2376"], "match_opposite": False}}},
 }
@@ -49,15 +49,42 @@ def test_port_drift_is_an_update():
     assert p["state"] == "update" and p["diff"] == ["destination_ports"] and p["id"] == "pid"
 
 
-@pytest.mark.parametrize("over,key", [
-    (dict(action="allow"), "action"),
-    (dict(enabled=False), "enabled"),
-    (dict(logging=False), "logging"),
-    (dict(source_zone="Dmz"), "source_zone_id"),
-])
-def test_unupdatable_drift_refuses(over, key):
+def test_action_drift_refuses():
+    p = mod.plan(params(action="allow"), ZONES, [LIVE])
+    assert "error" in p and "action" in p["error"] and "not done automatically" in p["error"]
+
+
+@pytest.mark.parametrize("over,key", [(dict(enabled=False), "enabled"), (dict(logging=False), "logging")])
+def test_enabled_logging_drift_is_a_patch_update(over, key):
     p = mod.plan(params(**over), ZONES, [LIVE])
-    assert "error" in p and key in p["error"] and "not done automatically" in p["error"]
+    assert p["state"] == "update" and p["diff"] == [key]
+
+
+def test_zone_change_is_a_different_policy_not_drift():
+    # zones are part of the identity: a declared (name, zones) that does not exist is a create
+    p = mod.plan(params(source_zone="Dmz", destination_zone="Internal"), ZONES, [LIVE])
+    assert p["state"] == "absent -> create"
+
+
+def test_clearing_ports_is_refused():
+    p = mod.plan(params(destination_ports=[]), ZONES, [LIVE])
+    assert "error" in p and "clearing the port filter" in p["error"]
+
+
+def test_ip_address_filter_is_not_silently_treated_as_port_filter():
+    ipf = dict(LIVE, destination={"zone_id": "d", "filter": {"kind": "ip_address", "ports": {"items": ["2376"]}}})
+    p = mod.plan(params(), ZONES, [ipf])
+    assert "error" in p and "destination_filter_kind" in p["error"]
+
+
+def test_same_name_system_rule_is_ignored():
+    sysrule = dict(LIVE, id="sys", origin="SystemDefined")
+    assert mod.plan(params(), ZONES, [sysrule])["state"] == "absent -> create"
+
+
+def test_duplicate_user_rules_error():
+    p = mod.plan(params(), ZONES, [LIVE, dict(LIVE, id="pid2")])
+    assert "error" in p and "2 user-defined" in p["error"]
 
 
 def test_unknown_zone_is_an_error_not_a_create():

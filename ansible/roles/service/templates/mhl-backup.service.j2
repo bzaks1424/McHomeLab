@@ -1,5 +1,7 @@
 [Unit]
 Description=McHomeLab backup of {{ item.key }} ({{ ansible_managed }})
+# Visible as a condition skip (not a green success) when the share is not mounted.
+ConditionPathIsMountPoint={{ service_backup_root | dirname }}
 [Service]
 Type=oneshot
 ExecStart={{ service_backup_script_dir }}/mhl-backup-{{ item.key }}

@@ -2,7 +2,7 @@
 # Codified non-decisions (decision Q8): assertions site.yml checks every run.
 # unifly (installed on the controller, profile from ~/.config/unifly/config.toml)
 # is the read engine; the controller never writes to UniFi here.
-governance_unifly_bin: "unifly"
+governance_unifly_bin: "{{ lookup('env', 'HOME') }}/bin/unifly"
 # C5: dockerd mTLS (2376) on media/unifi has NO compensating firewall rule
 # (research/RESEARCH_WUD_MTLS.md). Assert no enabled Allow policy from a zone
 # other than the management zone reaches the DMZ zone on TCP 2376.

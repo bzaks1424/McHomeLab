@@ -66,3 +66,57 @@ def test_missing_destination_is_treated_as_all_ports():
 def test_mixed_list_keeps_order():
     ps = [pol("a", ["80"]), pol("b", ["2376"]), pol("c", ["1-65535"])]
     assert names(g.governance_port_match(ps, "2376")) == ["b", "c"]
+
+
+def test_allowing_is_case_insensitive_and_enabled_only():
+    ps = [{"name": "a", "action": "Allow", "enabled": True}, {"name": "b", "action": "ALLOW", "enabled": True},
+          {"name": "c", "action": "allow", "enabled": False}, {"name": "d", "action": "Block", "enabled": True},
+          {"name": "e", "action": "ALLOW", "enabled": "true"}]
+    assert names(g.governance_allowing(ps)) == ["a", "b", "e"]
+
+
+def test_allowing_rejects_unknown_action_enum():
+    import pytest
+    with pytest.raises(ValueError, match="unexpected firewall action"):
+        g.governance_allowing([{"name": "x", "action": "DROP", "enabled": True}])
+
+
+def zp(name, src, dst, action, index, ports=None, enabled=True):
+    p = pol(name, ports) if ports is not None else pol(name, no_filter=True)
+    p.update({"action": action, "index": index, "enabled": enabled, "source": {"zone_id": src}})
+    p["destination"]["zone_id"] = dst
+    return p
+
+
+def test_unshadowed_keeps_allow_without_preceding_block():
+    allow = zp("Allow All", "vpn", "dmz", "Allow", 2147483647)
+    assert names(g.governance_unshadowed([allow], [allow], "2376")) == ["Allow All"]
+
+
+def test_unshadowed_drops_allow_behind_matching_block():
+    allow = zp("Allow All", "vpn", "dmz", "Allow", 2147483647)
+    block = zp("Block 2376", "vpn", "dmz", "Block", 10000, ports=["2376"])
+    assert names(g.governance_unshadowed([allow], [allow, block], "2376")) == []
+
+
+def test_unshadowed_ignores_blocks_for_other_zone_pairs_ports_or_later_index_or_disabled():
+    allow = zp("Allow All", "vpn", "dmz", "Allow", 20000)
+    other_pair = zp("b1", "iot", "dmz", "Block", 10000, ports=["2376"])
+    other_port = zp("b2", "vpn", "dmz", "Block", 10000, ports=["22"])
+    later = zp("b3", "vpn", "dmz", "Block", 30000, ports=["2376"])
+    disabled = zp("b4", "vpn", "dmz", "Block", 10000, ports=["2376"], enabled=False)
+    assert names(g.governance_unshadowed([allow], [allow, other_pair, other_port, later, disabled], "2376")) == ["Allow All"]
+
+
+def test_unshadowed_reject_counts_as_block_and_range_blocks_match():
+    allow = zp("Allow All", "vpn", "dmz", "Allow", 20000)
+    rej = zp("r", "vpn", "dmz", "Reject", 10000, ports=["2000-3000"])
+    assert names(g.governance_unshadowed([allow], [allow, rej], "2376")) == []
+
+
+def test_allowing_excludes_reply_only_allows_but_not_new_or_unrestricted():
+    ps = [{"name": "ret", "action": "Allow", "enabled": True, "connection_states": ["ESTABLISHED", "RELATED"]},
+          {"name": "new", "action": "Allow", "enabled": True, "connection_states": ["NEW", "ESTABLISHED"]},
+          {"name": "any", "action": "Allow", "enabled": True, "connection_states": []},
+          {"name": "inv", "action": "Allow", "enabled": True, "connection_states": ["INVALID"]}]
+    assert names(g.governance_allowing(ps)) == ["new", "any", "inv"]

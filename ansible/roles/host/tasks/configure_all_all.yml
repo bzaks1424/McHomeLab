@@ -23,6 +23,27 @@
         opts: "{{ item.options }}"
         state: mounted
       loop: "{{ host_nfs_mounts }}"
+      when: not (item.optional | default(false))
+    # optional: true (hosts.yml) — an export not yet granted to this host must not fail
+    # the run (e.g. the Backups share until DSM grants the subnet); it is reported.
+    - name: "Mount optional NFS shares (failure reported, not fatal)"
+      ansible.posix.mount:
+        src: "{{ item.src }}"
+        path: "{{ item.path }}"
+        fstype: nfs
+        opts: "{{ item.options }}"
+        state: mounted
+      loop: "{{ host_nfs_mounts }}"
+      when: item.optional | default(false)
+      register: _host_optional_mount
+      failed_when: false
+    - name: "Report optional NFS shares that could not be mounted"
+      ansible.builtin.debug:
+        msg: "OPTIONAL MOUNT NOT AVAILABLE: {{ item.item.src }} -> {{ item.item.path }} ({{ item.msg | default('') | truncate(120) }})"
+      loop: "{{ _host_optional_mount.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.path | default('') }}"
+      when: item is failed
 - name: "Deploy Services"
   when: hostvars[inventory_hostname].services is defined
   ansible.builtin.include_role:

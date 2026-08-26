@@ -28,3 +28,15 @@ wud_wud_tag_include: '^\d+\.\d+\.\d+$'
 # does not: removed on every run so the inventory is authoritative for that directory.
 # Declared per host in hosts.yml (service_retire_paths). Absolute paths only.
 service_retire_paths: []
+
+# Backups (Mike's rule: restore-and-run artefacts live on the Synology, config in git).
+# A service may declare in hosts.yml:
+#   backup:
+#     paths: ["/opt/containers/step-ca/secrets", "/opt/containers/step-ca/db"]
+#     schedule: "daily"          # systemd OnCalendar
+#     keep: 14                   # snapshots to retain
+# Snapshots land in {{ service_backup_root }}/{{ inventory_hostname }}/<service>/<UTC stamp>/
+# with a `latest` symlink and a SHA256SUMS manifest. The timer is installed only when
+# the backup root is a mounted filesystem; otherwise the run reports and moves on.
+service_backup_root: "/mnt/Backups/HomeLabBackup"
+service_backup_script_dir: "/usr/local/sbin"

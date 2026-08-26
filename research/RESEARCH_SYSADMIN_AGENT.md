@@ -716,6 +716,28 @@ Remaining Phase 3: expiry checks (served certs, LSCR PAT, AirVPN key), controlle
 its toolchain (Q12), compose secret delivery (R-A §4.3), rsyslog/ca-certificates/docker
 fixes from §2.3. Then Phase 4 `observed` hosts, Phase 5 UniFi.
 
+### 2026-08-26 — Phase 4: Synology export pulled by MHL; UISP cert outage fixed; traefik mount bug
+**Synology.** DSM's scheduled Configuration Backup needs a Synology account and would back the
+NAS up to itself, so it is dropped. The capture step now does what the DSM UI does (from Mike's
+HAR): `SYNO.Backup.Config.Backup` `start` → poll `status` until `finish` → `download`
+(`synology_<date>.dss`, xz, plaintext). The controller encrypts it with `~/.mhl/vault/backup.pass`
+(same escrowed passphrase as the step-ca snapshots) before it lands on
+`HomeLabBackup/synology/config/` as `synology_YYYYMMDD.dss.enc` + `SHA256SUMS` + `latest.dss.enc`,
+once per UTC day, keep 14; asserts freshness (< 2 days). Verified: checksum OK, decrypts to xz.
+Restore: decrypt, then DSM Control Panel > Update & Restore > Restore. PRs #27, #29.
+**UISP (`unms.michaelpmcd.com`) — cert date invalid.** Served cert was UISP's own Let's Encrypt
+(expired 2026-06-14; its certbot loops on the LE rate limit "5 already issued in 168h" and never
+installs). The `uisp` route was `passthrough: true`. Fix: terminate at traefik with the step-ca
+cert like `unifi-os` (Inventory #9, #10: drop passthrough + `uisp-http`; `https_redirect`).
+Verified: issuer McHomeLab CA, `/nms/login` 200. Public IPs hit `/.well-known/acme-challenge`
+on port 80 — `unms` is internet-reachable; Mike to decide keep/close.
+**Role bug found on the way.** `traefik-external.yml` was bind-mounted as a *file*; Ansible's
+atomic template write creates a new inode, so a running traefik never saw route changes. Now
+`{{ service_dir }}/traefik-dynamic/` is mounted as a directory (PR #28; old file retired via
+`service_retire_paths`). Lesson: never file-bind-mount anything Ansible templates.
+Also: `now(utc=true).timestamp()` on Ansible's naive datetime is read as local time — freshness
+math was off by the UTC offset (fixed: `now().timestamp()`).
+
 ### 2026-08-26 — Phase 4: UniFi Network capture live (PRs #24, #25; Inventory #8)
 New `capture` role (controller play, after governance): `controller.captures: [{name, kind}]`
 → `capture_<kind>.yml`. `unifi_network`: newest controller auto-backup via `unifly system

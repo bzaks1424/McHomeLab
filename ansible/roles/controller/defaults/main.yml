@@ -7,3 +7,13 @@ controller_expiry_warn_days: 30
 # Declared in hosts.yml on the controller: credential_expiries:
 #   - {name: "wud_lscr_token", where: "GitHub PAT for LSCR pulls (WUD)", expires: "2027-08-24"}
 controller_credential_expiries: "{{ hostvars[inventory_hostname].credential_expiries | default([]) }}"
+
+# Toolchain (Q12)
+controller_step_cli_version: "0.28.2"
+controller_step_cli_deb: "https://github.com/smallstep/cli/releases/download/v{{ controller_step_cli_version }}/step-cli_{{ controller_step_cli_version }}-1_amd64.deb"
+controller_manage_docker_cli: true
+controller_mhl_home: "{{ lookup('env', 'HOME') }}/.mhl"
+controller_root_ca_cert: "{{ hostvars['localhost'].registry | registry_get('root_ca_cert', export_root ~ '/util/root_ca_cert') }}"
+controller_remote_api_hosts: >-
+  {{ hostvars | dict2items | selectattr('value.docker.remote_api', 'defined')
+     | selectattr('value.docker.remote_api', 'eq', true) | map(attribute='key') | list }}

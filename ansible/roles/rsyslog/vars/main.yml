@@ -1,6 +1,6 @@
 ---
 # vars file for {{ role_name }}
-rsyslog_template_base: "etc/rsyslog.d/90-synology.conf"
+rsyslog_template_base: "etc/rsyslog.d/90-forward.conf"
 rsyslog_template_src: "{{ rsyslog_template_base }}.j2"
 rsyslog_template_dest: "/{{ rsyslog_template_base }}"
 rsyslog_template_mode: "0644"

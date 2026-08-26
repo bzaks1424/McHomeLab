@@ -715,3 +715,12 @@ and F7 check-mode-safe imports. Harness/hook work is stopped by decision (see me
 Remaining Phase 3: expiry checks (served certs, LSCR PAT, AirVPN key), controller role owns
 its toolchain (Q12), compose secret delivery (R-A §4.3), rsyslog/ca-certificates/docker
 fixes from §2.3. Then Phase 4 `observed` hosts, Phase 5 UniFi.
+
+### 2026-08-26 — compose secret delivery applied (R-A §4.3 closed)
+`secrets:` per service → `/opt/docker/compose/secrets/<service>/<VAR>` (0400, owner per image
+family) mounted at `/run/secrets/<service>_<VAR>`; file-form env (`FILE__`, `_SECRETFILE`,
+`__FILE`). Verified live: gluetun WireGuard keys (VPN egress OK), Plex `FILE__PLEX_CLAIM`, WUD
+LSCR token + MQTT password. Changed secret files restart only their service. API reads retry
+because gluetun recreation restarts every namespaced container. Nothing in a rendered compose
+file is a secret any more; whole-file-vaulted `homepage-services.yaml`/`recyclarr.yml` stay as
+they are (delivered by `copy`, which decrypts).

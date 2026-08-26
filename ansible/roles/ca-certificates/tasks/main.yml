@@ -12,7 +12,10 @@
 - name: "Update CA certificate trust store"
   ansible.builtin.command:
     cmd: /usr/sbin/update-ca-certificates
-    creates: "{{ ca_cert_trust_symlink }}"
+  register: _ca_update
+  # `creates:` missed CA rotation (same file name, new content). update-ca-certificates
+  # reports "N added, M removed"; changed only when either is non-zero.
+  changed_when: _ca_update.stdout is search('([1-9][0-9]*) added|([1-9][0-9]*) removed')
   when:
     - _ca_cert_file is defined
     - _ca_cert_file.stat.exists | default(false)

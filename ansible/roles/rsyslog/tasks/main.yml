@@ -1,5 +1,16 @@
 ---
 # tasks file for {{ role_name }}
+- name: "Refuse to forward logs to a placeholder"
+  ansible.builtin.fail:
+    msg: "ext_syslog_server is not set for {{ inventory_hostname }} — declare the syslog target in hosts.yml (all.vars)"
+  when: ext_syslog_server is not defined
+
+- name: "Retire the old vendor-named config file"
+  ansible.builtin.file:
+    path: "/etc/rsyslog.d/90-synology.conf"
+    state: absent
+  notify: "Restart rsyslog"
+
 - name: "Deploy rsyslog forwarding config"
   ansible.builtin.template:
     src: "{{ rsyslog_template_src }}"

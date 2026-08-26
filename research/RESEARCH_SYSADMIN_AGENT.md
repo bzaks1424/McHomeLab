@@ -615,7 +615,7 @@ homepage-*.yaml, recyclarr.yml   side files delivered by registry export/import 
 incidents/INCIDENT-<date>-<slug>.md   Q1 records: what was done by hand, what must be codified
 findings/                        R-D escalation queue (Phase 2)
 manifests/<host>/<name>.yml      hash/date/size of each Synology-held backup (Phase 4) — the git-side index of 13.3
-unifi/                           UniFi object payloads (Phase 5)
+unifi/                           (dropped — UniFi objects live in hosts.yml under controller.unifi; see §12 2026-08-26 upsert/adopt)
 README.md                        how to run, where the vault password comes from
 ```
 ### 13.3 Synology — `HomeLabBackup` share (backups: restore-and-run artefacts)
@@ -715,6 +715,16 @@ and F7 check-mode-safe imports. Harness/hook work is stopped by decision (see me
 Remaining Phase 3: expiry checks (served certs, LSCR PAT, AirVPN key), controller role owns
 its toolchain (Q12), compose secret delivery (R-A §4.3), rsyslog/ca-certificates/docker
 fixes from §2.3. Then Phase 4 `observed` hosts, Phase 5 UniFi.
+
+### 2026-08-26 — Phase 5 scope decision: upsert + adopt-on-demand (Mike)
+Not "adopt everything", not "only MHL-created": the `unifi` role **upserts by name** — a
+declared object is created if absent, converged if present. Existing objects are adopted
+**on demand** by declaring them; `scripts/mhl-unifi-adopt firewall_policy "<name>"` prints the
+declaration from the live controller (read-only; `--list` shows candidates; warns on fields
+the role does not reconcile yet so an adoption is never silently partial). Proven with
+`VPN to IoT (8123)` (existing policy): declared → `--check` says `in sync`, controller untouched.
+Everything undeclared stays UI-managed and is still snapshotted daily by the capture role.
+The same shape applies to every future object type (networks, DNS, traffic lists).
 
 ### 2026-08-26 — Phase 5 bring-up: first UniFi object under code (PRs #34–#36, Inventory #13)
 `unifi` role (controller play, before governance): name-keyed `unifi.firewall_policies`

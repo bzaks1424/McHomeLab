@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""mhl-unifi-adopt — print the hosts.yml declaration for an EXISTING UniFi object.
+
+Read-only. Adopt-on-demand (Phase 5): the unifi role upserts by name, so tracking
+an existing object is "declare it". This prints the declaration from the live
+controller so it is not hand-typed. Paste it under the controller's
+`unifi: firewall_policies:` list; the next `site.yml` pass reports `in sync`.
+
+usage: mhl-unifi-adopt firewall_policy "<policy name>"
+       mhl-unifi-adopt firewall_policy --list          # names of user-defined policies
+"""
+import json
+import os
+import subprocess
+import sys
+
+UNIFLY = os.path.expanduser("~/bin/unifly")
+
+
+def unifly(*args):
+    out = subprocess.run([UNIFLY, *args, "--all", "-o", "json"], check=True, capture_output=True, text=True).stdout
+    data = json.loads(out)
+    return data.get("data", data) if isinstance(data, dict) else data
+
+
+def q(s):
+    return json.dumps(str(s), ensure_ascii=False)
+
+
+def firewall_policy(name):
+    zones = {z["id"]: z["name"] for z in unifly("firewall", "zones", "list")}
+    pols = unifly("firewall", "policies", "list")
+    if name == "--list":
+        for p in pols:
+            if p.get("origin") != "SystemDefined":
+                print(p["name"])
+        return 0
+    match = [p for p in pols if p["name"] == name]
+    if not match:
+        sys.exit(f"no firewall policy named {name!r} (see --list)")
+    p = match[0]
+    ports = (((p.get("destination") or {}).get("filter") or {}).get("ports") or {}).get("items") or []
+    # Fields the unifi role does not reconcile yet: say so, never adopt silently partial.
+    unmanaged = []
+    if (p.get("source") or {}).get("filter"):
+        unmanaged.append("source.filter")
+    dfilter = (p.get("destination") or {}).get("filter") or {}
+    if dfilter and dfilter.get("kind") != "port":
+        unmanaged.append(f"destination.filter kind={dfilter.get('kind')}")
+    if p.get("schedule") or p.get("connection_states"):
+        unmanaged.append("schedule/connection_states")
+    if unmanaged:
+        print(f"# WARNING: not reconciled by the unifi role yet: {', '.join(unmanaged)} — those stay UI-managed", file=sys.stderr)
+    lines = [
+        f"          - name: {q(p['name'])}",
+        f"            action: {q(p['action'].lower())}",
+        f"            source_zone: {q(zones.get(p['source']['zone_id'], p['source']['zone_id']))}",
+        f"            destination_zone: {q(zones.get(p['destination']['zone_id'], p['destination']['zone_id']))}",
+    ]
+    if ports:
+        lines.append("            destination_ports: [" + ", ".join(q(x) for x in ports) + "]")
+    lines.append(f"            enabled: {'true' if p.get('enabled') else 'false'}")
+    lines.append(f"            logging: {'true' if p.get('logging_enabled') else 'false'}")
+    if p.get("description"):
+        lines.append(f"            description: {q(p['description'])}")
+    print("\n".join(lines))
+    return 0
+
+
+KINDS = {"firewall_policy": firewall_policy}
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3 or sys.argv[1] not in KINDS:
+        sys.exit(__doc__)
+    sys.exit(KINDS[sys.argv[1]](sys.argv[2]))

@@ -32,9 +32,9 @@
     job: "{{ controller_vault_escrow_cmd }}"
   become: false
 
-- name: "Vault escrow: sync now (same command line the cron runs; it contains a shell &&)"
-  ansible.builtin.shell:
-    cmd: "{{ controller_vault_escrow_cmd }}"
+- name: "Vault escrow: sync now (the mount guard ran above)"
+  ansible.builtin.command:
+    cmd: "{{ controller_vault_escrow_rsync }}"
   register: _escrow_sync
   changed_when: "'>f' in _escrow_sync.stdout or '*deleting' in _escrow_sync.stdout"
   become: false

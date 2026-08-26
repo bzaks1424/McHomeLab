@@ -33,4 +33,6 @@ controller_vault_escrow_minute: "17"
 # The escrow folder must sit on a mounted filesystem (never the local disk): first two path components.
 controller_vault_escrow_mount: "/{{ controller_vault_escrow_dir.split('/')[1:3] | join('/') }}"
 # -rti: recursive, times, itemized (no owner/perm/group — the destination is a shared export)
-controller_vault_escrow_cmd: "mountpoint -q {{ controller_vault_escrow_mount | quote }} && rsync -rti --delete {{ controller_mhl_home }}/vault/ {{ controller_vault_escrow_dir | quote }}/"
+controller_vault_escrow_rsync: "rsync -rti --delete {{ controller_mhl_home }}/vault/ {{ controller_vault_escrow_dir | quote }}/"
+# The cron line guards the mount itself; the play guards it with its own task before syncing.
+controller_vault_escrow_cmd: "mountpoint -q {{ controller_vault_escrow_mount | quote }} && {{ controller_vault_escrow_rsync }}"

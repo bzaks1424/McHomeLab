@@ -30,17 +30,16 @@
 
 - name: "UniFi: object snapshots (yaml, one file per object type, overwritten daily)"
   become: false
+  vars:
+    _snap: "{{ capture_root }}/unifi/network/snapshot-{{ obj | replace(' ', '-') }}.yaml"
+  # Single line on purpose: a more-indented continuation inside a folded scalar
+  # keeps its newline, which split the mv into two shell commands (2026-08-26).
   ansible.builtin.shell:
-    cmd: >-
-      {{ capture_unifly_bin }} {{ obj }} list --all -o yaml
-      > "{{ capture_root }}/unifi/network/snapshot-{{ obj | replace(' ', '-') }}.yaml.tmp"
-      && mv "{{ capture_root }}/unifi/network/snapshot-{{ obj | replace(' ', '-') }}.yaml.tmp"
-            "{{ capture_root }}/unifi/network/snapshot-{{ obj | replace(' ', '-') }}.yaml"
+    cmd: '{{ capture_unifly_bin }} {{ obj }} list --all -o yaml > "{{ _snap }}.tmp" && mv "{{ _snap }}.tmp" "{{ _snap }}"'
   loop: "{{ capture_unifi_objects }}"
   loop_control:
     loop_var: obj
   changed_when: false
-  failed_when: false
 
 - name: "UniFi: site settings export (raw JSON)"
   become: false

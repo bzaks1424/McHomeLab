@@ -12,6 +12,12 @@ controller_credential_expiries: "{{ hostvars[inventory_hostname].credential_expi
 controller_step_cli_version: "0.28.2"
 controller_step_cli_deb: "https://github.com/smallstep/cli/releases/download/v{{ controller_step_cli_version }}/step-cli_{{ controller_step_cli_version }}-1_amd64.deb"
 controller_manage_docker_cli: true
+# unifly (UniFi CLI; read engine for governance/capture, write engine for the unifi role).
+# 0.10.0 fixes create --action block (0.9.x sent DROP, rejected by the Integration API).
+controller_unifly_version: "0.10.0"
+controller_unifly_url: "https://github.com/hyperb1iss/unifly/releases/download/v{{ controller_unifly_version }}/unifly-linux-amd64"
+controller_unifly_sha256: "d2160a06fafc104f5122719daf5ed38ee2ee28bab7c7778f7776994c01a15424"
+controller_unifly_bin: "{{ lookup('env', 'HOME') }}/bin/unifly"
 controller_mhl_home: "{{ lookup('env', 'HOME') }}/.mhl"
 controller_root_ca_cert: "{{ hostvars['localhost'].registry | registry_get('root_ca_cert', export_root ~ '/util/root_ca_cert') }}"
 controller_remote_api_hosts: >-

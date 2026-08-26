@@ -34,3 +34,7 @@
 
 - name: "Expiry watch (read-only)"
   ansible.builtin.import_tasks: expiry.yml
+
+- name: "Vault escrow"
+  ansible.builtin.import_tasks: escrow.yml
+  when: controller_vault_escrow_dir != ""

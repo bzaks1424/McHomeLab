@@ -1,0 +1,26 @@
+---
+# Vault escrow (Mike, 2026-08-26): mirror ~/.mhl/vault (vault password, backup
+# passphrase, API tokens) into the Google-Drive-synced Keys folder so the
+# controller can be rebuilt from the safe. Hourly cron in the controller user's
+# crontab plus one immediate sync. Declared in hosts.yml on the controller:
+#   vault_escrow_dir: "/media/Backups/UserData/gdrive/Projects/Home Tech/Keys/MHL vault"
+- name: "Vault escrow directory"
+  ansible.builtin.file:
+    path: "{{ controller_vault_escrow_dir }}"
+    state: directory
+    mode: "0700"
+  become: false
+
+- name: "Vault escrow: hourly rsync"
+  ansible.builtin.cron:
+    name: "mhl vault escrow"
+    minute: "{{ controller_vault_escrow_minute }}"
+    job: "{{ controller_vault_escrow_cmd }}"
+  become: false
+
+- name: "Vault escrow: sync now"
+  ansible.builtin.command:
+    cmd: "{{ controller_vault_escrow_cmd }}"
+  register: _escrow_sync
+  changed_when: "'>f' in _escrow_sync.stdout or '*deleting' in _escrow_sync.stdout"
+  become: false

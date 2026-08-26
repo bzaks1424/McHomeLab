@@ -17,3 +17,10 @@ controller_root_ca_cert: "{{ hostvars['localhost'].registry | registry_get('root
 controller_remote_api_hosts: >-
   {{ hostvars | dict2items | selectattr('value.docker.remote_api', 'defined')
      | selectattr('value.docker.remote_api', 'eq', true) | map(attribute='key') | list }}
+
+# Vault escrow: mirror ~/.mhl/vault into a folder that Google Drive syncs (Mike's safe backup).
+# Declared in hosts.yml on the controller as vault_escrow_dir; unset = no escrow.
+controller_vault_escrow_dir: "{{ hostvars[inventory_hostname].vault_escrow_dir | default('') }}"
+controller_vault_escrow_minute: "17"
+# -rti: recursive, times, itemized (no owner/perm/group — the destination is a shared export)
+controller_vault_escrow_cmd: "rsync -rti --delete {{ controller_mhl_home }}/vault/ {{ controller_vault_escrow_dir | quote }}/"

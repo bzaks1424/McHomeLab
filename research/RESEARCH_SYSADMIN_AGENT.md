@@ -716,6 +716,22 @@ Remaining Phase 3: expiry checks (served certs, LSCR PAT, AirVPN key), controlle
 its toolchain (Q12), compose secret delivery (R-A §4.3), rsyslog/ca-certificates/docker
 fixes from §2.3. Then Phase 4 `observed` hosts, Phase 5 UniFi.
 
+### 2026-08-26 — Phase 4: UniFi Network capture live (PRs #24, #25; Inventory #8)
+New `capture` role (controller play, after governance): `controller.captures: [{name, kind}]`
+→ `capture_<kind>.yml`. `unifi_network`: newest controller auto-backup via `unifly system
+backup list/download` (`creates:` → copied once), one YAML per object type (networks,
+firewall zones/policies, dns, acl, traffic-lists), `unifly settings export`, `SHA256SUMS`,
+`latest.unf`, prune beyond `capture_keep: 14`. Lands in
+`/mnt/Backups/HomeLabBackup/unifi/network/`; verified: 9/9 checksums OK, second apply
+idempotent. Gotchas: runs `become: false` (unifly is in `~/bin`, not root's PATH; `become`
+is invalid on `include_tasks`, so it is per task); a more-indented continuation inside a
+folded `>-` scalar keeps its newline — it split `mv` into two commands and `failed_when:
+false` hid the rc 127 (both fixed in #25: one-line cmd, failures surface). Observation: the
+controller's own auto-backup cadence looks monthly (newest `.unf` 2026-08-01) — daily
+capture only refreshes monthly unless the UniFi schedule changes (Phase 5 candidate).
+Synology capture step (verify DSM self-export) stays in WARN until Mike schedules DSM's
+Configuration Backup; UISP capture waits on an API token; iDRAC (powered off) is document-only.
+
 ### 2026-08-26 — compose secret delivery applied (R-A §4.3 closed)
 `secrets:` per service → `/opt/docker/compose/secrets/<service>/<VAR>` (0400, owner per image
 family) mounted at `/run/secrets/<service>_<VAR>`; file-form env (`FILE__`, `_SECRETFILE`,

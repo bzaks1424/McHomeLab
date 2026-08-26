@@ -716,6 +716,36 @@ Remaining Phase 3: expiry checks (served certs, LSCR PAT, AirVPN key), controlle
 its toolchain (Q12), compose secret delivery (R-A §4.3), rsyslog/ca-certificates/docker
 fixes from §2.3. Then Phase 4 `observed` hosts, Phase 5 UniFi.
 
+### 2026-08-26 — Quality pass: restore rehearsal, module, four adversarial reviews (PRs #39–#45, Inventory #15–#16)
+Mike's order: restore-test → Python module → code review → cleanup → external adversarial review.
+- `make unit` (pytest, 83 cases) and `make restore-test` (decrypt + integrity-check every backup
+  type from the share; stray-file detector) exist; unit is in `validate`, restore-test in `test`.
+- restore-test found **plaintext step-ca CA keys + password on the share** (from the Aug 25
+  `cp -a` attempt); shredded; finding in the inventory repo. Open for Mike: rotate the CA key
+  password; who else reads the share.
+- `mhl_unifi_firewall_policy` module (+ `module_utils/mhl_unifly`) replaced the Jinja compare.
+- Four parallel adversarial reviews (unifi; captures; service/controller; governance/scripts/
+  hygiene) — all findings fixed in #42–#45. The ones that mattered: **C5 had a hole** (zone-pair
+  `Allow All` rules with `filter: null` were excluded before the port check; Vpn and Gateway
+  could reach dockerd:2376 in Dmz) → assertion now counts them, excuses only reply-only
+  (ESTABLISHED/RELATED) allows and allows shadowed by an earlier Block on the same zone pair;
+  two block policies declared (Vpn, Gateway) → "C5 holds (138 policies)". UniFi
+  `settings.json`/`.unf` on the share carried controller secrets in the clear → encrypted; all
+  plaintext downloads now go to `~/.mhl/tmp` (0700) and are shredded; `SHA256SUMS` written
+  after prune (was before → red on day 15); DSM login via POST; secret-rotation restart was
+  dead code (fact set after use) → runs after the deploy via compose; backup snapshots atomic
+  (`.tmp` + rename, tar rc 1 tolerated); "not mounted" is red everywhere (captures, timer via
+  `ConditionPathIsMountPoint`, escrow); `api_settings` refuses non-JSON reads and unknown keys;
+  policy identity = (name, source zone, destination zone) among user-defined rules; `patch`
+  handles enabled/logging; clearing ports is refused; unifly writes pass `-y` with stdin closed;
+  step-cli pinned by sha256; docker contexts update in place; committed test SSH key deleted;
+  hook machinery archived (`archive/governance-hooks`), `make ci` no longer runs it → **CI green
+  on main for the first time**; `CLAUDE.md` header/rules 4 and 6 now describe what exists.
+- Process slip, recorded: #44 was merged with a red `make validate` (one lint violation) because
+  the command chain did not gate the merge on it; fixed in #45 and the chain now gates.
+- Lesson repeated twice today: a more-indented continuation inside a folded `>-` scalar keeps
+  its newline. Use a literal block (`|`) for multi-statement shell, or one line.
+
 ### 2026-08-26 — Phase 5 scope decision: upsert + adopt-on-demand (Mike)
 Not "adopt everything", not "only MHL-created": the `unifi` role **upserts by name** — a
 declared object is created if absent, converged if present. Existing objects are adopted

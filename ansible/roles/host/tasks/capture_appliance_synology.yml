@@ -136,6 +136,6 @@
   vars:
     _newest: "{{ _capture_exports.files | sort(attribute='mtime') | last }}"
   ansible.builtin.assert:
-    that: (now(utc=true).timestamp() - _newest.mtime) < (host_capture_max_age_days | int) * 86400
+    that: (now().timestamp() - _newest.mtime) < (host_capture_max_age_days | int) * 86400
     fail_msg: "CAPTURE STALE: newest Synology export {{ _newest.path | basename }} is older than {{ host_capture_max_age_days }} days"
-    success_msg: "capture: newest Synology export {{ _newest.path | basename }} ({{ ((now(utc=true).timestamp() - _newest.mtime) / 3600) | round(1) }} h old)"
+    success_msg: "capture: newest Synology export {{ _newest.path | basename }} ({{ ((now().timestamp() - _newest.mtime) / 3600) | round(1) }} h old)"

@@ -716,6 +716,21 @@ Remaining Phase 3: expiry checks (served certs, LSCR PAT, AirVPN key), controlle
 its toolchain (Q12), compose secret delivery (R-A §4.3), rsyslog/ca-certificates/docker
 fixes from §2.3. Then Phase 4 `observed` hosts, Phase 5 UniFi.
 
+### 2026-08-26 — Phase 5 bring-up: first UniFi object under code (PRs #34–#36, Inventory #13)
+`unifi` role (controller play, before governance): name-keyed `unifi.firewall_policies`
+declared on the controller, zones by NAME, reconciled per R-C §2 bring-up pattern —
+`unifly firewall policies list` → match → `create` (all fields) / `update` (ports only:
+unifly `update` has no action/zone/enabled/logging flags) → a diff in an un-updatable field
+FAILS loudly (no silent delete+recreate). `--check` prints absent→create / differs in … /
+in sync. First object: `ANSIBLE-Block-Internal-Docker-to-DMZ` (Block, Internal→Dmz, TCP/2376,
+logging; belt-and-braces for C5). Verified on the live controller; second apply "in sync".
+Found on the way: unifly 0.9.0 sends `DROP` for `--action block` (API rejects) — fixed in
+0.10.0 (`controller/commands/policy/firewall.rs`); controller toolchain now pins unifly
+0.10.0 (release binary, sha256) into `~/bin/unifly` (PR #35). Jinja trap: `.ports.items`
+resolves to the dict method — use `['items']`.
+Next: `firewall_order` (index) reconcile, then networks/VLANs, DNS records, traffic-lists,
+then fold the pattern into `mhl.unifi` modules once ≥3 object types repeat the skeleton.
+
 ### 2026-08-26 — Phase 4: UISP capture live (PR #31, Inventory #11) — Phase 4 observed hosts complete
 `capture` kind `uisp` on the controller: `POST /nms/api/v2.1/nms/backups/create` → poll
 `GET /nms/backups` until `state == success` → `GET /nms/backups/{id}` (octet-stream) → encrypt

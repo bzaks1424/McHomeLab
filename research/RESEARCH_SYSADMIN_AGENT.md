@@ -663,3 +663,36 @@ of the `mhl` vault password), backed up to Google Drive, openable from any
 device. It holds the vault password and is where plaintext originals are
 escrowed before `mhl-vault-file --purge`. Vault password rotation: **hold**
 (no public exposure found; reviewer-reported transcript exposure unverified).
+## 14. step-ca: configuration vs backup, and the restore procedure (Phase 3)
+
+**Configuration (git):** `McHomeLab-Inventory/stepca/` holds `ca.json`
+(vault-encrypted whole-file — it embeds the provisioners' encrypted JWKs),
+`defaults.json`, `root_ca.crt`, `intermediate_ca.crt`. The controller exports
+them through the registry; `util` imports them into
+`/opt/containers/step-ca/{config,certs}/` before the service role runs compose,
+so a rebuilt util gets the identical CA configuration. `DOCKER_STEPCA_INIT_*`
+is retired (it only ever ran on an empty volume and would have minted a new CA).
+A change to `ca.json` in git is applied by `site.yml` and needs a step-ca
+container restart to take effect.
+
+**Backup (Synology):** `secrets/{root_ca_key,intermediate_ca_key,password}` and
+`db/` — the CA's identity and issued-cert state. Target layout (§13.3):
+`HomeLabBackup/util/step-ca/<YYYY-MM-DD>/{secrets,db}` + `latest`, written by a
+timer declared by the service role (pending Mike's share decision), retention
+declared in `hosts.yml`, manifest (sha256/date/size) recorded in
+`McHomeLab-Inventory/manifests/util/step-ca.yml`.
+
+**Restore (rebuild util, CA intact):**
+1. `site.yml` provisions util and imports the config/certs from the inventory.
+2. Before the first `docker compose up` of step-ca (or: stop the container),
+   copy `HomeLabBackup/util/step-ca/latest/{secrets,db}` into
+   `/opt/containers/step-ca/`, owner uid 1000, `secrets/` 0700.
+3. `site.yml` again (compose up). Verify: `step ca health --ca-url
+   https://ca.util.michaelpmcd.com` and that an existing fleet cert still
+   validates against `root_ca.crt` from git.
+
+**Worst case (util *and* Synology gone):** no key material → a **new CA**.
+`site.yml` re-issues every certificate and re-delivers every trust store
+(docker mTLS on media/unifi, WUD, Synology DSM, printer, traefik ACME) — a
+fleet-wide re-issue event, not a restore. Documented here so nobody expects
+otherwise.

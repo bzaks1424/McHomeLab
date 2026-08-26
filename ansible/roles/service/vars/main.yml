@@ -51,3 +51,28 @@ service_backup_services: >-
 service_api_settings: >-
   {{ service_services | dict2items | selectattr('value.api_settings', 'defined')
      | map(attribute='value.api_settings') | list | flatten }}
+
+# Secret manifest: one entry per (service, VAR). Regular services from `secrets:`;
+# gluetun and wud infrastructure secrets from their config / the wud_* vars.
+service_secret_manifest: >-
+  {{ (service_services | dict2items | selectattr('value.secrets', 'defined') | list
+      | map('service_secret_entries') | list | flatten)
+     + (service_gluetun_secret_entries | default([]))
+     + (service_wud_secret_entries | default([])) }}
+service_gluetun_secret_entries: >-
+  {{ [] if 'gluetun' not in service_infra_services else
+     ([{'service': 'gluetun', 'name': 'WIREGUARD_PRIVATE_KEY', 'style': 'gluetun',
+        'value': service_infra_services.gluetun.config.wireguard_private_key}]
+      if service_infra_services.gluetun.config.wireguard_private_key is defined else [])
+     + ([{'service': 'gluetun', 'name': 'WIREGUARD_PRESHARED_KEY', 'style': 'gluetun',
+         'value': service_infra_services.gluetun.config.wireguard_preshared_key}]
+        if service_infra_services.gluetun.config.wireguard_preshared_key is defined else [])
+     + ([{'service': 'gluetun', 'name': 'OPENVPN_PASSWORD', 'style': 'gluetun',
+         'value': service_infra_services.gluetun.config.vpn_password}]
+        if service_infra_services.gluetun.config.vpn_password is defined else []) }}
+service_wud_secret_entries: >-
+  {{ [] if 'wud' not in service_infra_services else
+     ([{'service': 'wud', 'name': 'WUD_REGISTRY_LSCR_LINUXSERVER_TOKEN', 'style': 'wud', 'value': wud_lscr_token}]
+      if wud_lscr_token is defined else [])
+     + ([{'service': 'wud', 'name': 'WUD_TRIGGER_MQTT_HA_PASSWORD', 'style': 'wud', 'value': wud_mqtt_password}]
+        if wud_mqtt_password is defined else []) }}

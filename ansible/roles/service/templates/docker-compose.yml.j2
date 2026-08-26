@@ -22,10 +22,19 @@ services:
 {% if svc.command is defined %}
     command: {{ svc.command }}
 {% endif %}
-{% if svc.environment is defined %}
+{% if svc.environment is defined or svc.secrets is defined %}
     environment:
-{% for key, val in svc.environment.items() %}
+{% for key, val in (svc.environment | default({})).items() %}
       {{ key }}: "{{ val }}"
+{% endfor %}
+{% for key in (svc.secrets | default({})).keys() %}
+      {{ key | secret_env_name(service_secret_styles, svc.secret_style | default('lsio')) }}: "/run/secrets/{{ svc_name }}_{{ key }}"
+{% endfor %}
+{% endif %}
+{% if svc.secrets is defined %}
+    secrets:
+{% for key in svc.secrets.keys() %}
+      - {{ svc_name }}_{{ key }}
 {% endfor %}
 {% endif %}
 {% if svc.network_mode is defined %}
@@ -118,3 +127,10 @@ services:
 {% endif %}
 
 {% endfor %}
+{% if service_secret_manifest | length > 0 %}
+secrets:
+{% for sec in service_secret_manifest %}
+  {{ sec.service }}_{{ sec.name }}:
+    file: "{{ service_secrets_dir }}/{{ sec.service }}/{{ sec.name }}"
+{% endfor %}
+{% endif %}

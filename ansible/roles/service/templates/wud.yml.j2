@@ -11,6 +11,10 @@
   wud:
     image: {{ wud_image }}
     restart: {{ wud.restart | default('unless-stopped') }}
+    secrets:
+{% for sec in service_wud_secret_entries %}
+      - wud_{{ sec.name }}
+{% endfor %}
     environment:
       TZ: "{{ config.tz | default('America/Chicago') }}"
       WUD_WATCHER_LOCAL_CRON: "{{ cron }}"
@@ -33,11 +37,11 @@
 {# lscr.io has no public registry in WUD — a GitHub PAT is required, or the #}
 {# linuxserver images are silently unwatched (RESEARCH_WUD_MTLS.md §6.4).   #}
       WUD_REGISTRY_LSCR_LINUXSERVER_USERNAME: "{{ wud_lscr_username }}"
-      WUD_REGISTRY_LSCR_LINUXSERVER_TOKEN: "{{ wud_lscr_token }}"
+      WUD_REGISTRY_LSCR_LINUXSERVER_TOKEN__FILE: "/run/secrets/wud_WUD_REGISTRY_LSCR_LINUXSERVER_TOKEN"
 {% endif %}
       WUD_TRIGGER_MQTT_HA_URL: "{{ wud_mqtt_url }}"
       WUD_TRIGGER_MQTT_HA_USER: "{{ wud_mqtt_user }}"
-      WUD_TRIGGER_MQTT_HA_PASSWORD: "{{ wud_mqtt_password }}"
+      WUD_TRIGGER_MQTT_HA_PASSWORD__FILE: "/run/secrets/wud_WUD_TRIGGER_MQTT_HA_PASSWORD"
       WUD_TRIGGER_MQTT_HA_HASS_ENABLED: "true"
       WUD_TRIGGER_MQTT_HA_HASS_DISCOVERY: "true"
 {# HASS_DEVICEID/DEVICENAME exist only after 8.3.1 (verified: 8.3.1 rejects   #}

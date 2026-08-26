@@ -47,3 +47,19 @@ service_backup_passphrase: "SHOULD_NOT_BE_HERE"
 
 # `-e service_backup_force_run=true` on site.yml runs every declared backup once (codified trigger).
 service_backup_force_run: false
+
+# Compose secrets (R-A §4.3): secret values never land in the 0644 compose file.
+# Each becomes {{ service_secrets_dir }}/<service>/<VAR> (0400, owner per image
+# family) mounted at /run/secrets/<service>_<VAR>, and the container gets the
+# image family's file-form env var instead of the value:
+#   gluetun  -> VAR_SECRETFILE   lsio -> FILE__VAR   wud -> VAR__FILE   generic -> VAR_FILE
+# Regular services declare `secrets: {VAR: !vault ...}` and `secret_style:`;
+# the gluetun/wud infrastructure templates use this automatically.
+service_secrets_dir: "{{ service_dir }}/secrets"
+service_secrets_dir_mode: "0700"
+service_secret_file_mode: "0400"
+service_secret_styles:
+  gluetun: {prefix: "", suffix: "_SECRETFILE", owner: "root"}
+  lsio: {prefix: "FILE__", suffix: "", owner: "root"}
+  wud: {prefix: "", suffix: "__FILE", owner: "1000"}
+  generic: {prefix: "", suffix: "_FILE", owner: "root"}

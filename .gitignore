@@ -353,4 +353,6 @@ tags
 # End of https://www.toptal.com/developers/gitignore/api/linux,python,ansible,pycharm,vim,nano,terraform,docker
 
 ### McHomeLab ###
+# pinned collections installed by `make deps` (derived; requirements.yml is the source)
 ansible/collections/
+*.pre-vault

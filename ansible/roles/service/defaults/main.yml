@@ -1,5 +1,9 @@
 ---
 service_dir: "/opt/docker/compose"
+# Traefik file-provider directory. Mounted as a DIRECTORY on purpose: a file bind
+# mount pins the inode, so an atomically re-templated file is never seen by the
+# running container (unms route stale until recreate, 2026-08-26).
+service_traefik_dynamic_dir: "{{ service_dir }}/traefik-dynamic"
 service_file_mode: "0644"
 service_dir_mode: "0755"
 service_docker_socket: "/var/run/docker.sock"

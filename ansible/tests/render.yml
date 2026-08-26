@@ -81,7 +81,7 @@
             - "service_infra_services.traefik.config.external_routes is defined"
           ansible.builtin.template:
             src: "{{ service_role_dir }}/templates/traefik-external.yml.j2"
-            dest: "{{ service_render_dir }}/traefik-external.yml"
+            dest: "{{ service_render_dir }}/traefik-dynamic-external.yml"
             mode: "0644"
 
         - name: "Validate rendered compose file"

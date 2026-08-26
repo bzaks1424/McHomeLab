@@ -1,3 +1,9 @@
 ---
 # defaults file for controller
 controller_nfs_mount_mode_default: "0755"
+
+# Expiry watch: warn when a served certificate or a declared credential is within this many days.
+controller_expiry_warn_days: 30
+# Declared in hosts.yml on the controller: credential_expiries:
+#   - {name: "wud_lscr_token", where: "GitHub PAT for LSCR pulls (WUD)", expires: "2027-08-24"}
+controller_credential_expiries: "{{ hostvars[inventory_hostname].credential_expiries | default([]) }}"

@@ -62,5 +62,4 @@
 - name: "Apply docker daemon configuration"
   ansible.builtin.meta: flush_handlers
 - name: "Refresh the SSH session to apply new group membership"
-  ansible.builtin.meta: refresh_inventory
-  # ansible.builtin.meta: reset_connection
+  ansible.builtin.meta: reset_connection

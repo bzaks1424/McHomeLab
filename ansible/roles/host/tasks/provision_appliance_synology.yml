@@ -33,6 +33,7 @@
     validate_certs: false
     return_content: true
   register: _synology_login
+  check_mode: false  # read-only DSM call; runs under --check
 
 - name: "List existing certificates on {{ inventory_hostname }}"
   ansible.builtin.uri:
@@ -49,6 +50,7 @@
       version: "1"
       _sid: "{{ _synology_login.json.data.sid }}"
   register: _synology_certs
+  check_mode: false  # read-only DSM call; runs under --check
 
 - name: "Find existing cert by description"
   ansible.builtin.set_fact:
@@ -101,4 +103,5 @@
     url: "{{ synology_base_url }}/webapi/entry.cgi?api=SYNO.API.Auth&version=7&method=logout&_sid={{ _synology_login.json.data.sid }}"
     method: "GET"
     validate_certs: false
+  check_mode: false  # read-only DSM call; runs under --check
   ignore_errors: true

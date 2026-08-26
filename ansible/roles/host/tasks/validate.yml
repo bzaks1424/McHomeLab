@@ -9,6 +9,7 @@
             host: "{{ host_fqdn }}"
             port: "{{ host_validate_port }}"
           register: _appliance_cert
+          check_mode: false  # read-only probe; must run under --check or the assert below fails
 
         - name: "Validate certificate issuer and expiry for {{ inventory_hostname }}"
           ansible.builtin.assert:

@@ -23,3 +23,8 @@ service_pull_policy: "policy"
 traefik_wud_tag_include: '^v\d+\.\d+\.\d+$'
 gluetun_wud_tag_include: '^v\d+\.\d+\.\d+$'
 wud_wud_tag_include: '^\d+\.\d+\.\d+$'
+
+# Files under service_dir that a previous configuration created and the current one
+# does not: removed on every run so the inventory is authoritative for that directory.
+# Declared per host in hosts.yml (service_retire_paths). Absolute paths only.
+service_retire_paths: []

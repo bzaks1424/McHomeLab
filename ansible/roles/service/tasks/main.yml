@@ -142,6 +142,16 @@
       loop: "{{ service_backup_services | dict2items }}"
       loop_control:
         label: "{{ item.key }}"
+    - name: "Run backups now (forced via -e service_backup_force_run=true)"
+      ansible.builtin.systemd:
+        name: "mhl-backup-{{ item.key }}.service"
+        state: started
+        daemon_reload: true
+      loop: "{{ service_backup_services | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      when: service_backup_force_run | bool
+      changed_when: true
     - name: "Enable backup timers"
       ansible.builtin.systemd:
         name: "mhl-backup-{{ item.key }}.timer"

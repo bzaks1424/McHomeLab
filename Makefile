@@ -1,11 +1,16 @@
 VENV      := .venv/bin
 INVENTORY := ansible/inventory/test.yml
 
-.PHONY: ci deps lint yamllint ansible-lint syntax check render no-secrets no-secrets-all hooks hooks-installed secrets-matrix unit validate test
+.PHONY: ci deps lint yamllint ansible-lint syntax check render no-secrets no-secrets-all hooks hooks-installed secrets-matrix unit restore-test validate test
 
 deps:
 	cd ansible && ../$(VENV)/ansible-galaxy collection install -r requirements.yml -p ./collections --force
 	$(VENV)/pip install -q -r requirements-dev.txt
+
+# Restore rehearsal: decrypt + integrity-check every backup type from the live share
+# (machine-dependent: needs /mnt/Backups and ~/.mhl/vault/backup.pass; not in validate).
+restore-test:
+	scripts/mhl-restore-test
 
 # Unit tests: filter plugins and scripts modules, no Ansible runtime, no lab contact.
 unit:
@@ -55,4 +60,4 @@ secrets-matrix:
 # remain runnable but are not part of validate.
 validate: lint syntax render no-secrets secrets-matrix unit
 
-test: validate
+test: validate restore-test

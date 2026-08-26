@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# mhl-restore-test — rehearse a restore of every backup type on the HomeLabBackup share.
+# Read-only on the lab: verifies checksums, decrypts each `latest` into a private temp
+# dir, integrity-checks the payload, and shreds the temp dir. Also fails on any file
+# in a snapshot directory that is not a known artefact (plaintext left behind).
+# Usage: mhl-restore-test [share-root] [key-file]   (defaults below)
+set -euo pipefail
+ROOT="${1:-/mnt/Backups/HomeLabBackup}"
+KEY="${2:-$HOME/.mhl/vault/backup.pass}"
+FAIL=0
+TMP=$(mktemp -d); chmod 700 "$TMP"
+trap 'find "$TMP" -type f -exec shred -u -n 1 {} + 2>/dev/null; rm -rf "$TMP"' EXIT
+
+ok()   { echo "PASS  $*"; }
+bad()  { echo "FAIL  $*"; FAIL=1; }
+need() { [ -r "$1" ] || { bad "$2: missing $1"; return 1; }; }
+
+mountpoint -q "$(dirname "$ROOT")" || { echo "SKIP  $(dirname "$ROOT") not mounted"; exit 3; }
+need "$KEY" "key" || exit 1
+
+dec() { openssl enc -d -aes-256-cbc -pbkdf2 -pass "file:$KEY" -in "$1" -out "$2"; }
+
+# Every file in a snapshot dir must match one of these; anything else is suspect.
+check_dir() {  # dir label pattern...
+  local d="$1" label="$2"; shift 2
+  local stray
+  stray=$(cd "$d" && find . -mindepth 1 -maxdepth 1 -printf '%f\n' | grep -vE "$(IFS='|'; echo "$*")" || true)
+  [ -z "$stray" ] && ok "$label: no unexpected files" || bad "$label: unexpected files on the share: $stray"
+  (cd "$d" && [ -f SHA256SUMS ] && sha256sum -c --quiet SHA256SUMS) && ok "$label: SHA256SUMS verify" || bad "$label: checksum verify"
+}
+
+# --- step-ca (service backup: tar | openssl) ---
+D="$ROOT/util/step-ca"
+if [ -d "$D" ]; then
+  stray=$(cd "$D" && find . -mindepth 1 -maxdepth 1 -printf '%f\n' | grep -vE '^([0-9T:-]+Z\.(tar\.enc|sha256)|latest\.tar\.enc)$' || true)
+  [ -z "$stray" ] && ok "step-ca: no unexpected files" || bad "step-ca: unexpected files on the share: $stray"
+  latest=$(readlink -f "$D/latest.tar.enc")
+  (cd "$D" && sha256sum -c --quiet "$(basename "${latest%.tar.enc}").sha256") && ok "step-ca: checksum" || bad "step-ca: checksum"
+  if dec "$latest" "$TMP/stepca.tar" 2>/dev/null; then
+    listing=$(tar -tf "$TMP/stepca.tar")
+    for want in opt/containers/step-ca/secrets/root_ca_key opt/containers/step-ca/secrets/intermediate_ca_key opt/containers/step-ca/secrets/password opt/containers/step-ca/db/; do
+      grep -qx "$want" <<<"$listing" && ok "step-ca: contains $want" || bad "step-ca: missing $want"
+    done
+    mkdir -p "$TMP/stepca" && tar -xf "$TMP/stepca.tar" -C "$TMP/stepca" && ok "step-ca: tar extracts ($(find "$TMP/stepca" -type f | wc -l) files)" || bad "step-ca: tar extract"
+  else bad "step-ca: decrypt"; fi
+else bad "step-ca: $D missing"; fi
+
+# --- Synology DSM configuration export ---
+D="$ROOT/synology/config"
+if [ -d "$D" ]; then
+  check_dir "$D" "synology" '^synology_[0-9]{8}\.dss\.enc$' '^latest\.dss\.enc$' '^SHA256SUMS$'
+  if dec "$D/latest.dss.enc" "$TMP/synology.dss" 2>/dev/null; then
+    xz -t "$TMP/synology.dss" && ok "synology: .dss is intact xz ($(stat -c %s "$TMP/synology.dss") bytes)" || bad "synology: xz integrity"
+  else bad "synology: decrypt"; fi
+else bad "synology: $D missing"; fi
+
+# --- UISP backup ---
+D="$ROOT/uisp"
+if [ -d "$D" ]; then
+  check_dir "$D" "uisp" '^uisp_[0-9]{8}\.unmsbackup\.enc$' '^latest\.unmsbackup\.enc$' '^SHA256SUMS$'
+  if dec "$D/latest.unmsbackup.enc" "$TMP/uisp.gz" 2>/dev/null; then
+    gzip -t "$TMP/uisp.gz" && ok "uisp: backup is intact gzip ($(stat -c %s "$TMP/uisp.gz") bytes)" || bad "uisp: gzip integrity"
+    n=$(tar -tzf "$TMP/uisp.gz" 2>/dev/null | wc -l); [ "$n" -gt 0 ] && ok "uisp: tar listing ($n entries)" || bad "uisp: not a tar.gz"
+  else bad "uisp: decrypt"; fi
+else bad "uisp: $D missing"; fi
+
+# --- UniFi Network controller backup + snapshots (not encrypted: controller-produced .unf) ---
+D="$ROOT/unifi/network"
+if [ -d "$D" ]; then
+  check_dir "$D" "unifi" '^autobackup_.*\.unf$' '^latest\.unf$' '^settings\.json$' '^snapshot-[a-z-]+\.yaml$' '^SHA256SUMS$'
+  [ -s "$(readlink -f "$D/latest.unf")" ] && ok "unifi: latest.unf present ($(stat -c %s "$(readlink -f "$D/latest.unf")") bytes)" || bad "unifi: latest.unf"
+  python3 -c "import json,sys; json.load(open('$D/settings.json'))" && ok "unifi: settings.json parses" || bad "unifi: settings.json"
+else bad "unifi: $D missing"; fi
+
+[ "$FAIL" -eq 0 ] && echo "RESTORE-TEST: all backup types rehearsed OK" || { echo "RESTORE-TEST: FAILURES above"; exit 1; }

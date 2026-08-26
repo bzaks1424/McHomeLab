@@ -53,6 +53,11 @@
       ansible.builtin.include_role:
         name: governance
 
+    # --- Observed systems: pull their self-backups to HomeLabBackup and manifest them ---
+    - name: "Captures"
+      ansible.builtin.include_role:
+        name: capture
+
     # --- Export to registry ---
     - name: "Export from controller"
       ansible.builtin.include_role:

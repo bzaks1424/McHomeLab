@@ -1,0 +1,11 @@
+---
+# Observed-system captures run on the controller (Phase 4, decision Q11):
+# the system produces its own backup; MHL pulls it to HomeLabBackup, verifies
+# it, and records a manifest. Declared on the controller in hosts.yml:
+#   captures:
+#     - {name: "unifi-network", kind: "unifi_network"}
+capture_root: "/mnt/Backups/HomeLabBackup"
+capture_unifly_bin: "{{ lookup('env', 'HOME') }}/bin/unifly"
+capture_unifi_objects: ["networks", "firewall zones", "firewall policies", "dns", "acl", "traffic-lists"]
+capture_keep: 14
+controller_captures: "{{ hostvars[inventory_hostname].captures | default([]) }}"

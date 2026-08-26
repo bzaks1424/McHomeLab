@@ -675,18 +675,25 @@ is retired (it only ever ran on an empty volume and would have minted a new CA).
 A change to `ca.json` in git is applied by `site.yml` and needs a step-ca
 container restart to take effect.
 
-**Backup (Synology):** `secrets/{root_ca_key,intermediate_ca_key,password}` and
-`db/` — the CA's identity and issued-cert state. Target layout (§13.3):
-`HomeLabBackup/util/step-ca/<YYYY-MM-DD>/{secrets,db}` + `latest`, written by a
-timer declared by the service role (pending Mike's share decision), retention
-declared in `hosts.yml`, manifest (sha256/date/size) recorded in
-`McHomeLab-Inventory/manifests/util/step-ca.yml`.
+**Backup (Synology `/volume4/Backups/HomeLabBackup`, decided 2026-08-25):**
+`secrets/{root_ca_key,intermediate_ca_key,password}` and `db/`. The service
+role's `backup:` block renders a systemd timer on util (daily, keep 14) that
+writes ONE ENCRYPTED tarball per run — `tar | openssl enc -aes-256-cbc -pbkdf2`
+with the per-host key `/root/.mhl-backup.key` delivered from the vaulted
+inventory (`service_backup_passphrase`; escrowed in Mike's safe as "McHomeLab
+backup passphrase") — to `HomeLabBackup/util/step-ca/<UTC stamp>.tar.enc` +
+`.sha256`, with a `latest.tar.enc` symlink. Nothing lands on the share in the
+clear: it is a 777 export to two subnets. util mounts the share at
+`/mnt/Backups` (`optional: true`, automount).
 
 **Restore (rebuild util, CA intact):**
 1. `site.yml` provisions util and imports the config/certs from the inventory.
 2. Before the first `docker compose up` of step-ca (or: stop the container),
-   copy `HomeLabBackup/util/step-ca/latest/{secrets,db}` into
-   `/opt/containers/step-ca/`, owner uid 1000, `secrets/` 0700.
+   restore the latest snapshot with the escrowed passphrase in a key file:
+   `openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/root/.mhl-backup.key -in
+   /mnt/Backups/HomeLabBackup/util/step-ca/latest.tar.enc | sudo tar -x -C /`
+   (paths inside are `opt/containers/step-ca/{secrets,db}`); check `secrets/`
+   is 0700 owned by uid 1000.
 3. `site.yml` again (compose up). Verify: `step ca health --ca-url
    https://ca.util.michaelpmcd.com` and that an existing fleet cert still
    validates against `root_ca.crt` from git.

@@ -30,12 +30,31 @@
     - name: "Render services for {{ inventory_hostname }}"
       when: hostvars[inventory_hostname].services is defined
       block:
-        - name: "Load service role defaults and vars"
+        # Role DEFAULTS must not outrank inventory (include_vars would): load them into a
+        # dict and set only the keys the inventory does not define (drift finding F2).
+        - name: "Load service role defaults (lowest precedence)"
           ansible.builtin.include_vars:
-            file: "{{ item }}"
-          loop:
-            - "{{ service_role_dir }}/defaults/main.yml"
-            - "{{ service_role_dir }}/vars/main.yml"
+            file: "{{ service_role_dir }}/defaults/main.yml"
+            name: _service_defaults
+
+        - name: "Apply service role defaults only where the inventory is silent"
+          ansible.builtin.set_fact:
+            "{{ item.key }}": "{{ item.value }}"
+          loop: "{{ _service_defaults | dict2items }}"
+          loop_control:
+            label: "{{ item.key }}"
+          when: hostvars[inventory_hostname][item.key] is not defined
+
+        - name: "Assert the inventory image pins survived"
+          ansible.builtin.assert:
+            that:
+              - "hostvars[inventory_hostname].traefik_image is not defined or traefik_image == hostvars[inventory_hostname].traefik_image"
+              - "hostvars[inventory_hostname].gluetun_image is not defined or gluetun_image == hostvars[inventory_hostname].gluetun_image"
+            fail_msg: "render used role defaults instead of inventory pins"
+
+        - name: "Load service role vars"
+          ansible.builtin.include_vars:
+            file: "{{ service_role_dir }}/vars/main.yml"
 
         - name: "Create render directory"
           ansible.builtin.file:

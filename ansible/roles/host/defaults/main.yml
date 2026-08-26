@@ -15,3 +15,11 @@ host_printer_cert_activation_wait: 3
 host_capture_root: "/mnt/Backups/HomeLabBackup"
 host_capture_dir: "{{ host_capture_root }}/{{ inventory_hostname }}/config"
 host_capture_max_age_days: 2
+host_capture_keep: 14
+# Synology: DSM configuration export pulled via SYNO.Backup.Config.Backup (start/status/download)
+# and encrypted with the controller's backup key before landing on the shared export.
+host_capture_key_path: "{{ lookup('env', 'HOME') }}/.mhl/vault/backup.pass"
+host_capture_dsm_base: "https://{{ ansible_host }}:{{ host_synology_dsm_port }}/webapi/entry.cgi"
+host_capture_validate_certs: false
+host_capture_dsm_retries: 60
+host_capture_dsm_delay: 2

@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # {{ ansible_managed }} — snapshot backup for service "{{ item.key }}" on {{ inventory_hostname }}
-# Copies the declared paths into {{ service_backup_root }}/{{ inventory_hostname }}/{{ item.key }}/<UTC stamp>/,
-# writes SHA256SUMS, updates `latest`, keeps the newest {{ item.value.backup.keep | default(14) }}.
+# Snapshot = one encrypted tarball (tar | openssl enc -aes-256-cbc -pbkdf2, key file
+# {{ service_backup_key_path }}) at {{ service_backup_root }}/{{ inventory_hostname }}/{{ item.key }}/<UTC stamp>.tar.enc
+# plus .sha256; `latest.tar.enc` symlink; newest {{ item.value.backup.keep | default(14) }} kept.
+# The share is a shared NFS export — nothing lands on it in the clear.
+# Restore: openssl enc -d -aes-256-cbc -pbkdf2 -pass file:<key> -in X.tar.enc | tar -x -C /
 set -euo pipefail
 ROOT="{{ service_backup_root }}/{{ inventory_hostname }}/{{ item.key }}"
+KEY="{{ service_backup_key_path }}"
 mountpoint -q "{{ service_backup_root | dirname }}" || { echo "backup root not mounted; skipping"; exit 0; }
-STAMP=$(date -u +%Y-%m-%dT%H%M%SZ); DEST="$ROOT/$STAMP"
-mkdir -p "$DEST"
-{% for p in item.value.backup.paths %}
-cp -a "{{ p }}" "$DEST/"
-{% endfor %}
-( cd "$DEST" && find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS )
-ln -sfn "$STAMP" "$ROOT/latest"
-ls -1d "$ROOT"/????-??-??T??????Z 2>/dev/null | sort | head -n -{{ item.value.backup.keep | default(14) }} | xargs -r rm -rf
-echo "backup {{ item.key }}: $DEST ($(du -sh "$DEST" | cut -f1))"
+[ -r "$KEY" ] || { echo "backup key $KEY missing; refusing to write plaintext"; exit 1; }
+STAMP=$(date -u +%Y-%m-%dT%H%M%SZ); OUT="$ROOT/$STAMP.tar.enc"
+mkdir -p "$ROOT"
+tar -C / -cf - {% for p in item.value.backup.paths %}"{{ p | regex_replace('^/', '') }}" {% endfor %}| openssl enc -aes-256-cbc -pbkdf2 -salt -pass "file:$KEY" -out "$OUT"
+( cd "$ROOT" && sha256sum "$STAMP.tar.enc" > "$STAMP.sha256" )
+ln -sfn "$STAMP.tar.enc" "$ROOT/latest.tar.enc"
+ls -1 "$ROOT"/????-??-??T??????Z.tar.enc 2>/dev/null | sort | head -n -{{ item.value.backup.keep | default(14) }} | while read -r old; do rm -f "$old" "${old%.tar.enc}.sha256"; done
+echo "backup {{ item.key }}: $OUT ($(du -h "$OUT" | cut -f1))"

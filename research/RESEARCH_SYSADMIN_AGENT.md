@@ -703,3 +703,15 @@ clear: it is a 777 export to two subnets. util mounts the share at
 (docker mTLS on media/unifi, WUD, Synology DSM, printer, traefik ACME) — a
 fleet-wide re-issue event, not a restore. Documented here so nobody expects
 otherwise.
+
+### 2026-08-26 — Phase 3 status (governance disabled by Mike; PR-merge-apply-verify loop)
+Done and applied to the fleet: F1 check-mode probes, F2 render precedence + pin assert,
+`service_retire_paths` (stale plaintext files gone from media/util), step-ca config from the
+inventory via registry import (`DOCKER_STEPCA_INIT_*` retired), optional NFS mounts, service
+`backup:` block → encrypted daily snapshots on `/volume4/Backups/HomeLabBackup` (first
+snapshot verified: checksum + decrypt), codified one-shot trigger, `api_settings` pattern
+(bazarr sonarr/radarr at localhost; qBittorrent tun0) — idempotent, `--check`-safe reads —
+and F7 check-mode-safe imports. Harness/hook work is stopped by decision (see memory).
+Remaining Phase 3: expiry checks (served certs, LSCR PAT, AirVPN key), controller role owns
+its toolchain (Q12), compose secret delivery (R-A §4.3), rsyslog/ca-certificates/docker
+fixes from §2.3. Then Phase 4 `observed` hosts, Phase 5 UniFi.

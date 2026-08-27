@@ -716,6 +716,18 @@ Remaining Phase 3: expiry checks (served certs, LSCR PAT, AirVPN key), controlle
 its toolchain (Q12), compose secret delivery (R-A §4.3), rsyslog/ca-certificates/docker
 fixes from §2.3. Then Phase 4 `observed` hosts, Phase 5 UniFi.
 
+### 2026-08-26 — C5 re-scoped to the zone design (Mike) — PRs #47, Inventory #17–#18
+Mike: "I use a zone-based firewall for a reason. I would prefer to not have blocks that are
+convenient today and a pita tomorrow." The two per-port blocks (Vpn/Gateway → Dmz TCP/2376)
+added in review round 1 were reverted the codified way (module `state: absent`, tombstones,
+apply, tombstones dropped). C5 now asserts that no **user-defined** policy opens 2376 into Dmz
+from outside Internal; zone-pair defaults (SystemDefined "Allow All") that reach the port are
+**reported** as accepted zone design ("C5 note: … from Gateway, Vpn"). Reply-only allows and
+allows shadowed by an earlier Block are excused. Live: holds, 136 policies.
+CA key password: Mike — no rotation unless there was true public exposure. Export of
+`/volume4/Backups` is limited to 192.168.254.0/28 and 192.168.200.0/24; pending Mike:
+what the /24 carries and whether the share is SMB-exposed to other accounts.
+
 ### 2026-08-26 — Quality pass: restore rehearsal, module, four adversarial reviews (PRs #39–#45, Inventory #15–#16)
 Mike's order: restore-test → Python module → code review → cleanup → external adversarial review.
 - `make unit` (pytest, 83 cases) and `make restore-test` (decrypt + integrity-check every backup

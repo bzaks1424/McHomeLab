@@ -716,6 +716,24 @@ Remaining Phase 3: expiry checks (served certs, LSCR PAT, AirVPN key), controlle
 its toolchain (Q12), compose secret delivery (R-A §4.3), rsyslog/ca-certificates/docker
 fixes from §2.3. Then Phase 4 `observed` hosts, Phase 5 UniFi.
 
+### 2026-08-27 — External review (clean context, KISS/SOLID/DRY): 10 defects, all verified and fixed (PR #51)
+Report: `research/RESEARCH_EXTERNAL_REVIEW_2026-08-27.md` (PR #50). I re-verified every finding
+(D3 and D6 reproduced locally) before fixing; none was overstated. Fixes:
+D1 PXE delivery had been dead since 9fad126 (2026-03-17) — restored as a `copy` delegated to the
+PXE host (resolved from the registry's `pxe_server`, `ansible_connection: ssh` forced because the
+provision phase runs local); `cleanup_pxe.yml` is a delegated `file: absent`. **Proven only to
+`--check` level; needs a PXE reprovision to prove end to end** (Mike to choose test VM vs next
+media reprovision). D2 escrow: no `--delete`, refuses to sync unless `mhl.pass`+`backup.pass`
+exist. D3 shadowing: a Block excuses an Allow only when it covers a superset (no source/ip
+filter, no schedule, state superset), `enabled` normalised — 4 new tests. D4 secret-rotation
+restart is a handler, `force_handlers` on both plays, flushed after deploy. D5 service backups
+fail when the root is unmounted. D6 `ignore_errors` instead of `failed_when: false` so the
+optional-mount reports can fire. D7 atomic `.unf.enc`. D8 module reports partial mutation.
+D9 `api_settings` asserts a mapping and compares type-aware (`api_value_equal`, tested).
+D10 named refusal for gluetun/wud required vars; wud MQTT block conditional.
+Memory corrected: "PXE confirmed working" was stale since March.
+Cleanup list (§2 of the report, 12 items) not yet actioned — pending Mike.
+
 ### 2026-08-26 — C5 re-scoped to the zone design (Mike) — PRs #47, Inventory #17–#18
 Mike: "I use a zone-based firewall for a reason. I would prefer to not have blocks that are
 convenient today and a pita tomorrow." The two per-port blocks (Vpn/Gateway → Dmz TCP/2376)

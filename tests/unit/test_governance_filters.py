@@ -120,3 +120,36 @@ def test_allowing_excludes_reply_only_allows_but_not_new_or_unrestricted():
           {"name": "any", "action": "Allow", "enabled": True, "connection_states": []},
           {"name": "inv", "action": "Allow", "enabled": True, "connection_states": ["INVALID"]}]
     assert names(g.governance_allowing(ps)) == ["new", "any", "inv"]
+
+
+def test_unshadowed_narrow_block_does_not_excuse_broad_allow():
+    allow = zp("Allow All", "vpn", "dmz", "Allow", 20000)
+    narrow = zp("one host", "vpn", "dmz", "Block", 10000, ports=["2376"])
+    narrow["destination"]["filter"] = {"kind": "ip_address", "ips": ["10.0.0.5"], "ports": {"items": ["2376"]}}
+    src_filtered = zp("one src", "vpn", "dmz", "Block", 10000, ports=["2376"])
+    src_filtered["source"]["filter"] = {"kind": "ip_address", "ips": ["10.9.9.9"]}
+    scheduled = zp("nights", "vpn", "dmz", "Block", 10000, ports=["2376"])
+    scheduled["schedule"] = {"mode": "EVERY_DAY"}
+    assert names(g.governance_unshadowed([allow], [allow, narrow, src_filtered, scheduled], "2376")) == ["Allow All"]
+
+
+def test_unshadowed_invalid_only_block_does_not_excuse():
+    allow = zp("Allow All", "vpn", "dmz", "Allow", 20000)
+    inv = zp("Block Invalid", "vpn", "dmz", "Block", 10000, ports=["2376"])
+    inv["connection_states"] = ["INVALID"]
+    assert names(g.governance_unshadowed([allow], [allow, inv], "2376")) == ["Allow All"]
+
+
+def test_unshadowed_string_false_enabled_is_disabled():
+    allow = zp("Allow All", "vpn", "dmz", "Allow", 20000)
+    b = zp("b", "vpn", "dmz", "Block", 10000, ports=["2376"])
+    b["enabled"] = "false"
+    assert names(g.governance_unshadowed([allow], [allow, b], "2376")) == ["Allow All"]
+
+
+def test_unshadowed_state_superset_block_covers():
+    allow = zp("new only", "vpn", "dmz", "Allow", 20000)
+    allow["connection_states"] = ["NEW"]
+    b = zp("b", "vpn", "dmz", "Block", 10000, ports=["2376"])
+    b["connection_states"] = ["NEW", "ESTABLISHED"]
+    assert names(g.governance_unshadowed([allow], [allow, b], "2376")) == []

@@ -97,11 +97,12 @@
         argv: ["mountpoint", "-q", "{{ service_backup_root | dirname }}"]
       register: _service_backup_mounted
       changed_when: false
-      failed_when: false
+      failed_when: _service_backup_mounted.rc not in [0, 1]
       check_mode: false
-    - name: "Report when the backup root is not mounted"
-      ansible.builtin.debug:
-        msg: "BACKUP ROOT NOT MOUNTED ({{ service_backup_root | dirname }}): timers installed but will skip until it is"
+    # A declared backup with no share is a failure, not a note (same semantics as captures/escrow).
+    - name: "Backup root is not mounted"
+      ansible.builtin.fail:
+        msg: "BACKUP ROOT NOT MOUNTED ({{ service_backup_root | dirname }}) on {{ inventory_hostname }} — backups are declared for {{ service_backup_services.keys() | list }}"
       when: _service_backup_mounted.rc != 0
     - name: "Deliver backup encryption key"
       ansible.builtin.copy:
@@ -207,6 +208,28 @@
       ansible.builtin.set_fact:
         service_secret_restart: "{{ _service_secret_files.results | selectattr('changed') | map(attribute='item.service') | unique | list }}"
       no_log: true
+      changed_when: service_secret_restart | length > 0
+      notify: "Restart services whose secret files changed"
+
+- name: "Infra services must declare what their templates need (named refusal, not a template error)"
+  ansible.builtin.assert:
+    that:
+      - "'gluetun' not in service_infra_services or service_infra_services.gluetun.config.vpn_type is defined"
+      - >-
+        'gluetun' not in service_infra_services
+        or service_infra_services.gluetun.config.vpn_type != 'wireguard'
+        or service_infra_services.gluetun.config.wireguard_private_key is defined
+      - >-
+        'gluetun' not in service_infra_services
+        or service_infra_services.gluetun.config.vpn_type != 'openvpn'
+        or service_infra_services.gluetun.config.vpn_password is defined
+      - >-
+        'wud' not in service_infra_services
+        or (wud_mqtt_url is not defined and wud_mqtt_user is not defined and wud_mqtt_password is not defined)
+        or (wud_mqtt_url is defined and wud_mqtt_user is defined and wud_mqtt_password is defined)
+    fail_msg: >-
+      {{ inventory_hostname }}: gluetun needs vpn_type plus wireguard_private_key (wireguard) or
+      vpn_password (openvpn); wud MQTT needs wud_mqtt_url, wud_mqtt_user and wud_mqtt_password together
 
 - name: "Template docker-compose.yml"
   ansible.builtin.template:
@@ -242,12 +265,10 @@
 # A changed secret file does not change the compose config-hash and the running container
 # keeps the OLD inode (Ansible writes by rename): restart exactly those services, after the
 # deploy so they exist. Services that share gluetun's netns are restarted with it.
-- name: "Restart services whose secret files changed"
-  community.docker.docker_compose_v2:
-    project_src: "{{ service_dir }}"
-    state: restarted
-    services: "{{ (service_secret_restart | default([])) + (service_gluetun_tunneled.keys() | list if 'gluetun' in (service_secret_restart | default([])) else []) }}"
-  when: service_secret_restart | default([]) | length > 0
+# The restart is a handler (survives a later task failure in the play: site.yml sets
+# force_handlers) and is flushed right after the deploy so the services exist.
+- name: "Flush handlers so a pending secret-change restart runs now"
+  ansible.builtin.meta: flush_handlers
 
 # Declarative application settings: services.<name>.api_settings (list of setting
 # groups, each carrying its own `service:` label; see tasks/api_setting.yml).

@@ -34,9 +34,7 @@ def governance_allowing(policies):
         action = str(p.get("action") or "").lower()
         if action not in VALID_ACTIONS:
             raise ValueError("unexpected firewall action %r on policy %r" % (p.get("action"), p.get("name")))
-        enabled = p.get("enabled")
-        if isinstance(enabled, str):
-            enabled = enabled.lower() == "true"
+        enabled = _enabled(p)
         # An allow restricted to ESTABLISHED/RELATED (no NEW) cannot open a port; it only
         # lets replies through for connections some other policy permitted.
         states = [str(x).upper() for x in (p.get("connection_states") or [])]
@@ -65,14 +63,40 @@ def governance_port_match(policies, port):
     return out
 
 
+def _enabled(p):
+    e = p.get("enabled")
+    if isinstance(e, str):
+        return e.lower() == "true"
+    return bool(e)
+
+
+def _initiating_states(p):
+    """connection_states as a set; empty = any state (can open connections)."""
+    return set(str(x).upper() for x in (p.get("connection_states") or []))
+
+
+def _covers(block, allow):
+    """True when `block` matches a superset of what `allow` matches (same zone pair assumed).
+    Conservative: any narrowing on the block side (source filter, destination ip filter,
+    schedule, a connection-state restriction the allow does not share) means no cover."""
+    if (block.get("source") or {}).get("filter"):
+        return False
+    bf = (block.get("destination") or {}).get("filter") or {}
+    if bf and bf.get("kind") not in (None, "", "port"):
+        return False
+    if block.get("schedule"):
+        return False
+    bs, as_ = _initiating_states(block), _initiating_states(allow)
+    if bs and not (as_ and as_ <= bs):
+        return False
+    return True
+
+
 def governance_unshadowed(allows, policies, port):
-    """Drop allow policies that are shadowed by an enabled Block/Reject for the same zone
-    pair, matching the port, evaluated earlier (lower index). UniFi evaluates policies in
-    index order; the zone-pair "Allow All" defaults sit at the maximum index."""
-    blocks = [
-        p for p in policies
-        if str(p.get("action") or "").lower() in ("block", "reject") and p.get("enabled")
-    ]
+    """Drop allow policies that are shadowed by an enabled Block/Reject for the same zone pair
+    that reaches the port, is evaluated earlier (lower index), and matches a SUPERSET of the
+    allow's traffic (a single-host or INVALID-only block does not excuse an Allow-All)."""
+    blocks = [p for p in policies if str(p.get("action") or "").lower() in ("block", "reject") and _enabled(p)]
     blocks = governance_port_match(blocks, port)
     out = []
     for a in allows:
@@ -83,6 +107,7 @@ def governance_unshadowed(allows, policies, port):
             (b.get("source") or {}).get("zone_id") == src
             and (b.get("destination") or {}).get("zone_id") == dst
             and (b.get("index", 0) or 0) < idx
+            and _covers(b, a)
             for b in blocks
         )
         if not shadowed:

@@ -18,6 +18,18 @@
     msg: "ESCROW: {{ controller_vault_escrow_mount }} is not mounted — the vault would be copied to the local disk"
   when: _escrow_mounted.rc != 0
 
+- name: "Vault escrow: source must hold the expected files (a rebuilt controller must not mirror an empty vault)"
+  ansible.builtin.stat:
+    path: "{{ controller_mhl_home }}/vault/{{ item }}"
+  loop: "{{ controller_vault_escrow_required }}"
+  register: _escrow_src
+  become: false
+
+- name: "Vault escrow: refuse to sync an incomplete vault"
+  ansible.builtin.assert:
+    that: _escrow_src.results | rejectattr('stat.exists') | list | length == 0
+    fail_msg: "ESCROW: missing in {{ controller_mhl_home }}/vault: {{ _escrow_src.results | rejectattr('stat.exists') | map(attribute='item') | list }} — restore them from the safe before syncing"
+
 - name: "Vault escrow directory"
   ansible.builtin.file:
     path: "{{ controller_vault_escrow_dir }}"

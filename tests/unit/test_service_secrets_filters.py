@@ -39,3 +39,12 @@ def test_env_name_per_style(style, expected):
 def test_unknown_style_is_an_error_not_a_silent_fallback():
     with pytest.raises(ValueError, match="unknown secret_style"):
         s.secret_env_name("X", STYLE_MAP, "nope")
+
+
+@pytest.mark.parametrize("actual,want,eq", [
+    (2, 2, True), (2.0, 2, True), ("2", 2, True), ("2.0", "2", True), (3, 2, False),
+    (True, "true", True), ("false", False, True), (True, "false", False),
+    ("tun0", "tun0", True), ("tun0", "eth0", False), (None, "x", False), ("", "", True),
+])
+def test_api_value_equal(actual, want, eq):
+    assert s.api_value_equal(actual, want) is eq

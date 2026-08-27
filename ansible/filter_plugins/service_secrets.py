@@ -17,6 +17,20 @@ def secret_env_name(name, style_map, style):
     return f"{st['prefix']}{name}{st['suffix']}"
 
 
+def api_value_equal(actual, want):
+    """Type-aware equality for api_settings compares: 2 == 2.0 == "2", True == "true";
+    otherwise string forms must match. Returns False when actual is missing (None)."""
+    if actual is None:
+        return False
+    if isinstance(actual, bool) or isinstance(want, bool):
+        return str(actual).lower() == str(want).lower()
+    try:
+        return float(actual) == float(want)
+    except (TypeError, ValueError):
+        return str(actual) == str(want)
+
+
 class FilterModule:
     def filters(self):
-        return {"service_secret_entries": service_secret_entries, "secret_env_name": secret_env_name}
+        return {"service_secret_entries": service_secret_entries, "secret_env_name": secret_env_name,
+                "api_value_equal": api_value_equal}

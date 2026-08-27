@@ -34,6 +34,7 @@
         tasks_from: init
 
 - name: "Configure Controller"
+  force_handlers: true
   hosts: controller
   gather_facts: false
   connection: local
@@ -73,6 +74,7 @@
         tasks_from: export
 
 - name: "Validate"
+  force_handlers: true
   hosts: "{{ hostvars['localhost'].build_hosts }}"
   serial: 1
   gather_facts: false

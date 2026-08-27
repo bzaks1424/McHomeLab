@@ -119,20 +119,26 @@ def main():
         module.fail_json(msg=p["error"], diff_keys=p.get("diff", []))
     result = dict(changed=p["state"] != "in sync", state=p["state"], diff_keys=p["diff"], name=module.params["name"])
     if result["changed"] and not module.check_mode:
+        mutated = False
         try:
             if p["state"] == "absent -> create":
                 u.write("firewall", "policies", "create", *create_args(module.params["name"], p["desired"], module.params["description"]))
+                mutated = True
             elif p["state"] == "present -> delete":
                 u.write("firewall", "policies", "delete", p["id"])
+                mutated = True
             else:
                 if "destination_ports" in p["diff"]:
                     u.write("firewall", "policies", "update", p["id"], *update_args(p["desired"]))
+                    mutated = True
                 patch = [k for k in p["diff"] if k in PATCHABLE]
                 if patch:
                     u.write("firewall", "policies", "patch", p["id"], *patch_args(p["desired"], patch))
+                    mutated = True
         except (UniflyError, ValueError) as e:
-            result["changed"] = False
-            module.fail_json(msg=str(e), **result)
+            # `changed` must say whether the controller was touched, not whether we finished.
+            result["changed"] = mutated
+            module.fail_json(msg=("%s (controller partially updated)" % e) if mutated else str(e), **result)
     module.exit_json(**result)
 
 

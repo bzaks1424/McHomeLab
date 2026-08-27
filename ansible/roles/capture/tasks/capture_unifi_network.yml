@@ -74,10 +74,11 @@
       when: not _unifi_captured.stat.exists
       changed_when: true
 
-    - name: "UniFi: encrypt the backup onto the share"
-      ansible.builtin.command:
-        argv: ["openssl", "enc", "-aes-256-cbc", "-pbkdf2", "-salt", "-pass", "file:{{ capture_key_path }}",
-               "-in", "{{ capture_tmp_dir }}/{{ _unifi_newest }}", "-out", "{{ capture_root }}/unifi/network/{{ _unifi_newest }}.enc"]
+    - name: "UniFi: encrypt the backup onto the share (atomic: .tmp then rename)"
+      vars:
+        _enc: "{{ capture_root }}/unifi/network/{{ _unifi_newest }}.enc"
+      ansible.builtin.shell:
+        cmd: 'openssl enc -aes-256-cbc -pbkdf2 -salt -pass "file:{{ capture_key_path }}" -in "{{ capture_tmp_dir }}/{{ _unifi_newest }}" -out "{{ _enc }}.tmp" && mv "{{ _enc }}.tmp" "{{ _enc }}"'
       when: not _unifi_captured.stat.exists
       changed_when: true
 
@@ -114,8 +115,8 @@
         executable: /bin/bash
       changed_when: false
   always:
-    - name: "UniFi: shred plaintext in the temp dir"
+    - name: "UniFi: shred plaintext in the temp dir and drop a partial .enc.tmp"
       ansible.builtin.shell:
-        cmd: 'find {{ capture_tmp_dir | quote }} -maxdepth 1 -type f -name "*.unf" -exec shred -u -n 1 {} +'
+        cmd: 'find {{ capture_tmp_dir | quote }} -maxdepth 1 -type f -name "*.unf" -exec shred -u -n 1 {} +; rm -f {{ (capture_root ~ "/unifi/network") | quote }}/*.enc.tmp'
       changed_when: false
       failed_when: false

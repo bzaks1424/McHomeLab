@@ -19,7 +19,7 @@
   loop: "{{ controller_nfs_mounts }}"
   when: item.optional | default(false)
   register: _controller_optional_mount
-  failed_when: false
+  ignore_errors: true  # noqa: ignore-errors — failed_when:false erases `failed`; the report below needs it
 
 - name: "Report optional controller mounts that failed"
   ansible.builtin.debug:

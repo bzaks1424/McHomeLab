@@ -39,11 +39,13 @@
       WUD_REGISTRY_LSCR_LINUXSERVER_USERNAME: "{{ wud_lscr_username }}"
       WUD_REGISTRY_LSCR_LINUXSERVER_TOKEN__FILE: "/run/secrets/wud_WUD_REGISTRY_LSCR_LINUXSERVER_TOKEN"
 {% endif %}
+{% if wud_mqtt_url is defined %}
       WUD_TRIGGER_MQTT_HA_URL: "{{ wud_mqtt_url }}"
       WUD_TRIGGER_MQTT_HA_USER: "{{ wud_mqtt_user }}"
       WUD_TRIGGER_MQTT_HA_PASSWORD__FILE: "/run/secrets/wud_WUD_TRIGGER_MQTT_HA_PASSWORD"
       WUD_TRIGGER_MQTT_HA_HASS_ENABLED: "true"
       WUD_TRIGGER_MQTT_HA_HASS_DISCOVERY: "true"
+{% endif %}
 {# HASS_DEVICEID/DEVICENAME exist only after 8.3.1 (verified: 8.3.1 rejects   #}
 {# them and the whole MQTT trigger fails to register). 8.3.1's device id is  #}
 {# the default "wud" — which is what we want anyway (plan D4).               #}

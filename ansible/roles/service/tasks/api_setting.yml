@@ -58,6 +58,11 @@
     _api_changed_keys: []
   no_log: true
 
+- name: "Read result must be a mapping at read.path — {{ item.service }}"
+  ansible.builtin.assert:
+    that: _api_actual is mapping
+    fail_msg: "{{ item.service }}: read.path {{ item.read.path | default('') }} did not yield a mapping (section renamed, or a list) — not writing"
+
 - name: "Compare declared vs actual for {{ item.service }}"
   ansible.builtin.set_fact:
     _api_changed_keys: "{{ _api_changed_keys + [entry.key] }}"
@@ -65,7 +70,7 @@
   loop_control:
     loop_var: entry
     label: "{{ entry.key }}"
-  when: "(_api_actual[entry.key] | default('<absent>') | string) != (entry.value | string)"
+  when: not (_api_actual[entry.key] | default(none) | api_value_equal(entry.value))
   no_log: true
 
 - name: "Refuse to write keys the API does not report (typo in want:, or wrong read.path) — {{ item.service }}"

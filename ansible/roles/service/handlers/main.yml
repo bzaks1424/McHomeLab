@@ -14,3 +14,11 @@
   loop: "{{ service_backup_services | dict2items }}"
   loop_control:
     label: "{{ item.key }}"
+
+# Secret files are bind-mounted by content path; compose does not recreate on content change.
+- name: "Restart services whose secret files changed"
+  community.docker.docker_compose_v2:
+    project_src: "{{ service_dir }}"
+    state: restarted
+    services: "{{ (service_secret_restart | default([])) + (service_gluetun_tunneled.keys() | list if 'gluetun' in (service_secret_restart | default([])) else []) }}"
+  when: service_secret_restart | default([]) | length > 0

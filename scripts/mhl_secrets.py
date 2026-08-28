@@ -30,12 +30,13 @@ import re
 
 import yaml
 
-SECRET_WORDS = "pass|password|passwd|secret|token|api_?key|apikey|claim|private_key|preshared_key|credential"
-KEY_RE = re.compile(r"^(?:[A-Za-z0-9._]*_)?(?i:" + SECRET_WORDS + r")$")
+SECRET_WORDS = "pass|password|passwd|secret|token|api[_-]?key|apikey|claim|private[_-]key|preshared[_-]key|credential"
+# `-` counts as a separator too: HTTP header keys like X-Plex-Token / X-Api-Key.
+KEY_RE = re.compile(r"^(?:[A-Za-z0-9._-]*[_-])?(?i:" + SECRET_WORDS + r")$")
 # Text fallback for files that do not parse (same words, line-shaped). Keep in
 # sync with the table above: it flags a secret-named key with a non-!vault,
 # non-{{ }}, non-empty, non-comment value.
-LINE_RE = re.compile(r"^[ \t-]*(?:[A-Za-z0-9._]*_)?(?i:" + SECRET_WORDS + r")[ \t]*:[ \t]*(?!(!vault|\{\{|\"\{\{|'\{\{|$|#))\S")
+LINE_RE = re.compile(r"^[ \t-]*(?:[A-Za-z0-9._-]*[_-])?(?i:" + SECRET_WORDS + r")[ \t]*:[ \t]*(?!(!vault|\{\{|\"\{\{|'\{\{|$|#))\S")
 #   embedded       FAIL   refuse (exit 1, remedy)   a secret-shaped LINE inside any block scalar's content
 #   next_line      FAIL   refuse (exit 1, remedy)   quoted value starting on the line after the key
 #   flow (coll.)   FAIL   refuse (exit 1, remedy)   a secret-named key HOLDING a flow collection [..]/{..}

@@ -14,7 +14,8 @@
     _uisp_dir: "{{ capture_root }}/uisp"
     _uisp_today: "{{ capture_root }}/uisp/uisp_{{ now(utc=true).strftime('%Y%m%d') }}.unmsbackup.enc"
     _uisp_plain: "{{ capture_tmp_dir }}/uisp_{{ now(utc=true).strftime('%Y%m%d') }}.unmsbackup"
-    _uisp_headers: {x-auth-token: "{{ item.token }}"}
+    _uisp_headers:
+      x-auth-token: "{{ item.token }}"
     _uisp_validate_certs: "{{ item.validate_certs | default(true) }}"
   no_log: true
 

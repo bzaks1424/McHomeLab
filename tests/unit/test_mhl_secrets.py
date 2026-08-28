@@ -79,3 +79,12 @@ def test_every_tool_refusal_also_fails_the_gate(cls):
 def test_fallback_scan_finds_line_shaped_secrets():
     out = m.scan_text_fallback("password: abc\nname: x\npassword: !vault x\n")
     assert [(f.line, f.cls) for f in out] == [(1, "plain")]
+
+
+def test_hyphenated_header_keys_are_secret_named():
+    # Found 2026-08-28: X-Plex-Token slipped past both the gate and the vault tool.
+    assert classes('X-Plex-Token: "abcdefghijklmnopqrstu"\n') == [("X-Plex-Token", "plain")]
+    assert classes('X-Api-Key: "k"\n') == [("X-Api-Key", "plain")]
+    assert classes("X-Plex-Token: !vault |\n  $ANSIBLE_VAULT;1.2;AES256;mhl\n  6162\n") == [("X-Plex-Token", "vaulted")]
+    assert classes('X-Plex-Token: "{{ plex_token }}"\n') == [("X-Plex-Token", "ref")]
+    assert m.LINE_RE.match('      X-Plex-Token: abc') is not None

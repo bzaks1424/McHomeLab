@@ -1,5 +1,12 @@
 ---
 docker_keyring_path_default: /etc/apt/keyrings
+# Pinned so the key is verified on download and the task is idempotent under --check.
+# Without it get_url cannot compare in check mode and reports `changed` on every run,
+# which made /drift permanently noisy on all three docker hosts. Same convention as
+# controller_step_cli_sha256 and controller_unifly_sha256.
+# If Docker rotates the key this task FAILS rather than silently accepting a new one;
+# re-pin deliberately after checking the new key.
+docker_gpg_key_sha256: "1500c1f56fa9e26b9b8f42452a553675796ade0807cdce11975eb98170b3a570"
 docker_keyring_dir_mode_default: "0755"
 docker_file_mode_default: "0644"
 docker_group_name: docker

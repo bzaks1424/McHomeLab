@@ -12,6 +12,7 @@
     url: "{{ docker_ubuntu_asc_url }}"
     dest: "{{ docker_keyring_asc }}"
     mode: "{{ docker_file_mode_default }}"
+    checksum: "sha256:{{ docker_gpg_key_sha256 }}"
 - name: "Docker Repo Configuration"
   ansible.builtin.apt_repository:
     repo: "{{ docker_ubuntu_repo }}"

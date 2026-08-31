@@ -25,3 +25,34 @@
   ansible.builtin.debug:
     msg: "{{ _unifi_policy_results.results | map(attribute='name') | zip(_unifi_policy_results.results | map(attribute='state')) | map('join', ': ') | list }}"
   when: unifi_firewall_policies | length > 0
+
+# NAT is reconciled through the RAW API, not `unifly nat policies`: that subcommand
+# drops destination_filter.invert_address on read and writes it false on create
+# (v0.10.0), which would invert the meaning of every per-VLAN DNS hijack rule while
+# leaving it green in the UI. See library/mhl_unifi_nat_rule.py.
+- name: "UniFi: reconcile declared NAT rules"
+  mhl_unifi_nat_rule:
+    description: "{{ rule.description }}"
+    in_interface: "{{ rule.in_interface }}"
+    type: "{{ rule.type | default('DNAT') }}"
+    protocol: "{{ rule.protocol | default('tcp_udp') }}"
+    ip_address: "{{ rule.ip_address | default(omit) }}"
+    port: "{{ rule.port | default(omit) }}"
+    destination_filter: "{{ rule.destination_filter | default(omit) }}"
+    source_filter: "{{ rule.source_filter | default(omit) }}"
+    enabled: "{{ rule.enabled | default(true) }}"
+    logging: "{{ rule.logging | default(false) }}"
+    exclude: "{{ rule.exclude | default(false) }}"
+    unifly_bin: "{{ unifi_unifly_bin }}"
+    state: "{{ rule.state | default('present') }}"
+  loop: "{{ unifi_nat_rules }}"
+  loop_control:
+    loop_var: rule
+    label: "{{ rule.description }}"
+  register: _unifi_nat_results
+  become: false
+
+- name: "UniFi: NAT report"
+  ansible.builtin.debug:
+    msg: "{{ _unifi_nat_results.results | map(attribute='description') | zip(_unifi_nat_results.results | map(attribute='state')) | map('join', ': ') | list }}"
+  when: unifi_nat_rules | length > 0

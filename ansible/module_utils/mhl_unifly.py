@@ -51,6 +51,89 @@ class Unifly(object):
         return normalize_list(doc)
 
 
+def api_get(unifly, path):
+    """Raw GET through `unifly api`. Used instead of the typed subcommands wherever
+    unifly's own model is lossy: its NAT model omits destination_filter.invert_address
+    entirely on read and hardcodes it false on create (v0.10.0,
+    crates/unifly-api/.../policy/nat.rs:235,243), so a rule read and recreated through
+    `unifly nat policies` silently inverts its meaning. Raw JSON round-trips intact."""
+    out = unifly.call("api", path)
+    if not out.strip():
+        raise UniflyError("unifly api %s: empty output" % path)
+    try:
+        return normalize_list(json.loads(out))
+    except ValueError as e:
+        raise UniflyError("unifly api %s: not JSON (%s)" % (path, e))
+
+
+def api_write(unifly, method, path, payload):
+    """Raw write through `unifly api -m <method> -d <json>`. Returns parsed JSON when
+    the controller sends any, else None."""
+    out = unifly.call("api", path, "-m", method, "-d", json.dumps(payload))
+    if not out.strip():
+        return None
+    try:
+        return json.loads(out)
+    except ValueError:
+        return None
+
+
+def network_map(networks):
+    """[{name, _id|id}] -> {name: id}. NAT rules reference a network by id in
+    `in_interface`; the inventory names it, exactly as zones are named for policies."""
+    out = {}
+    for n in networks:
+        nid = n.get("_id") or n.get("id")
+        if n.get("name") and nid:
+            out[n["name"]] = nid
+    return out
+
+
+def find_nat_rule(rules, description, in_interface_id):
+    """NAT rules carry `description`, not `name`, and descriptions are not guaranteed
+    unique. Match on (description, in_interface); more than one hit is an error, never
+    a guess -- same contract as find_policy."""
+    hits = [r for r in rules
+            if r.get("description") == description
+            and r.get("in_interface") == in_interface_id
+            and not r.get("is_predefined")]
+    if len(hits) > 1:
+        raise AmbiguousMatch("%d NAT rules described %r on the same interface (ids: %s)"
+                             % (len(hits), description,
+                                ", ".join(str(h.get("_id")) for h in hits)))
+    return hits[0] if hits else None
+
+
+def nat_filter_shape(f):
+    """The compared subset of a source/destination filter, in canonical form.
+    `address` is absent on a filter that inverts against nothing -- the DMZ hijack rule
+    is shaped that way and works -- so absent and empty must stay distinguishable."""
+    f = f or {}
+    return {
+        "filter_type": f.get("filter_type") or "NONE",
+        "address": f.get("address"),
+        "port": str(f["port"]) if f.get("port") not in (None, "") else None,
+        "invert_address": bool(f.get("invert_address", False)),
+        "invert_port": bool(f.get("invert_port", False)),
+    }
+
+
+def nat_rule_shape(rule):
+    """The compared subset of a live NAT rule."""
+    return {
+        "type": (rule.get("type") or "").upper(),
+        "enabled": bool(rule.get("enabled", False)),
+        "protocol": rule.get("protocol") or "all",
+        "ip_address": rule.get("ip_address"),
+        "port": str(rule["port"]) if rule.get("port") not in (None, "") else None,
+        "logging": bool(rule.get("logging", False)),
+        "exclude": bool(rule.get("exclude", False)),
+        "ip_version": rule.get("ip_version") or "IPV4",
+        "destination_filter": nat_filter_shape(rule.get("destination_filter")),
+        "source_filter": nat_filter_shape(rule.get("source_filter")),
+    }
+
+
 def normalize_list(doc):
     """unifly returns either a bare list or {"data": [...]}."""
     if isinstance(doc, dict):

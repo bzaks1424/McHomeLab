@@ -16,3 +16,4 @@
 unifi_unifly_bin: "{{ lookup('env', 'HOME') }}/bin/unifly"
 unifi_declared: "{{ hostvars[inventory_hostname].unifi | default({}) }}"
 unifi_firewall_policies: "{{ unifi_declared.firewall_policies | default([]) }}"
+unifi_nat_rules: "{{ unifi_declared.nat_rules | default([]) }}"

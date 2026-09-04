@@ -60,10 +60,15 @@
 # Site settings converge DECLARED KEYS ONLY. A section always exists and carries far
 # more fields than the lab has an opinion about, so the module compares and sends just
 # what the inventory states. There is no `state: absent` for the same reason.
+# Subscripts, not dots. `setting.values` resolves to the dict METHOD values(), not to
+# the key named values, and Ansible then fails with "Type 'method' is unsupported for
+# variable storage" -- which names the symptom and not the cause. `setting.key` happens
+# to work only because dicts have no `.key` attribute to collide with; `.items` would
+# break the same way. Subscripting both means the next key added here cannot reopen it.
 - name: "UniFi: reconcile declared site settings"
   mhl_unifi_setting:
-    key: "{{ setting.key }}"
-    values: "{{ setting.values }}"
+    key: "{{ setting['key'] }}"
+    values: "{{ setting['values'] }}"
     unifly_bin: "{{ unifi_unifly_bin }}"
   loop: "{{ unifi_settings }}"
   loop_control:

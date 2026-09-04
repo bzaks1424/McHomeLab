@@ -179,6 +179,43 @@ def diff_keys(desired, current):
     return [k for k, v in desired.items() if current.get(k, sentinel) != v]
 
 
+# --- site settings ---------------------------------------------------------------
+#
+# Settings differ from policies and NAT rules in one way that shapes everything below:
+# a section always exists and cannot be created or deleted, only converged. There is no
+# `absent`. The `usg` section alone carries ~30 fields the lab does not manage, so a
+# module that compared or sent the whole section would fight the controller over
+# defaults it has no opinion about. Only declared keys are compared, and only declared
+# keys are sent.
+
+SECRET_FIELD_PREFIX = "x_"
+
+
+def find_setting(sections, key):
+    """The section with this key, or None. Sections are unique per key on a site;
+    more than one is a controller we do not understand, not something to guess at."""
+    hits = [s for s in sections if s.get("key") == key]
+    if len(hits) > 1:
+        raise AmbiguousMatch("%d setting sections keyed %r (ids: %s)"
+                             % (len(hits), key, ", ".join(str(h.get("_id")) for h in hits)))
+    return hits[0] if hits else None
+
+
+def secret_fields(values):
+    """Declared field names that carry credentials. unifly documents the `x_` prefix as
+    exactly that, and rule 5 says a secret is an inline !vault value in hosts.yml, never
+    a plain field. Declaring one here would put it in git in clear, so the module refuses
+    rather than trusting the author to have noticed."""
+    return sorted(k for k in values if k.startswith(SECRET_FIELD_PREFIX))
+
+
+def setting_diff(declared, current):
+    """Declared keys whose live value differs. Nested objects (dns_verification is one)
+    compare whole: the lab declares the entire sub-object or none of it, so a partial
+    match is a difference. Reuses diff_keys so there is one definition of 'differs'."""
+    return sorted(diff_keys(declared, current or {}))
+
+
 def policy_ports(policy):
     """destination.filter.ports.items as a sorted list of strings ([] when unrestricted)."""
     dest = policy.get("destination") or {}

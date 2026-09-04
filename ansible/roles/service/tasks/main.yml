@@ -278,3 +278,41 @@
   loop: "{{ service_api_settings }}"
   loop_control:
     label: "{{ item.service }}"
+
+# --- reclaim, LAST and only on a healthy deploy -------------------------------------
+# Michael, 2026-09-04: "attach the prune as a stage of the upgrade - after validation -
+# prune up."
+#
+# Why this belongs in the upgrade rather than in someone's memory: pulling an image
+# never removes the one it replaces, so `-e service_pull_policy=always` grows
+# /var/lib/docker every round. On util that is a 5.2G partition shared with the apt
+# cache, and on 2026-09-04 it filled: `apt-get dist-upgrade` failed with "You don't
+# have enough free space in /var/cache/apt/archives" needing 847 MB, which aborted the
+# whole play before any service was touched. 3.21G of images were present and only
+# 1.60G in use — the upgrade workflow had been eating the space the upgrade needed.
+# A manual prune fixes it once; this fixes it every time.
+#
+# POSITION IS THE POINT. This is the last task in the role, after the compose deploy,
+# after handlers have flushed, and after the API settings are enforced. Anything that
+# fails above stops the play and the prune never runs, so a broken deploy keeps the
+# images it might need. `until` on the deploy is not required for that — Ansible's own
+# failure semantics give it.
+#
+# It removes images NOTHING references, including old tags, not merely dangling layers
+# (`dangling: false` is what widens it beyond untagged leftovers). The rollback cost is
+# a re-pull from the registry, which is what a deploy does anyway.
+- name: "Reclaim unreferenced images (after a healthy deploy)"
+  community.docker.docker_prune:
+    images: true
+    images_filters:
+      dangling: false
+  register: _service_prune
+  when: service_prune_after_deploy | bool
+  become: true
+
+- name: "Reclaim report"
+  ansible.builtin.debug:
+    msg: >-
+      pruned {{ (_service_prune.images | default([])) | length }} image(s),
+      {{ ((_service_prune.images_space_reclaimed | default(0)) / 1000000) | round | int }} MB reclaimed
+  when: service_prune_after_deploy | bool and (_service_prune.images | default([])) | length > 0

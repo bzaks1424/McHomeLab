@@ -22,6 +22,12 @@ service_wud_tls_dir_name: "docker-tls/client"
 # images) — today's behaviour exactly. Override per run to apply an update:
 #   ansible-playbook site.yml -e service_pull_policy=always
 service_pull_policy: "policy"
+# Reclaim unreferenced images as the LAST step of a healthy deploy (2026-09-04).
+# On by default: a pull never removes what it replaces, so without this an upgrade
+# round grows /var/lib/docker until apt has no room left - which is exactly how the
+# 2026-09-04 kernel upgrade on util failed. Set false for a run where you want the
+# previous images kept on disk for a fast local rollback.
+service_prune_after_deploy: true
 # WUD tag regexes for the infrastructure images (keeps WUD comparing against
 # real Linux release tags — e.g. traefik's "v3.7-windowsservercore" is noise)
 traefik_wud_tag_include: '^v\d+\.\d+\.\d+$'

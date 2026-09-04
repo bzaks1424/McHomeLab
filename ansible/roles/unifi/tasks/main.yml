@@ -56,3 +56,23 @@
   ansible.builtin.debug:
     msg: "{{ _unifi_nat_results.results | map(attribute='description') | zip(_unifi_nat_results.results | map(attribute='state')) | map('join', ': ') | list }}"
   when: unifi_nat_rules | length > 0
+
+# Site settings converge DECLARED KEYS ONLY. A section always exists and carries far
+# more fields than the lab has an opinion about, so the module compares and sends just
+# what the inventory states. There is no `state: absent` for the same reason.
+- name: "UniFi: reconcile declared site settings"
+  mhl_unifi_setting:
+    key: "{{ setting.key }}"
+    values: "{{ setting.values }}"
+    unifly_bin: "{{ unifi_unifly_bin }}"
+  loop: "{{ unifi_settings }}"
+  loop_control:
+    loop_var: setting
+    label: "{{ setting.key }}"
+  register: _unifi_setting_results
+  become: false
+
+- name: "UniFi: settings report"
+  ansible.builtin.debug:
+    msg: "{{ _unifi_setting_results.results | map(attribute='key') | zip(_unifi_setting_results.results | map(attribute='state')) | map('join', ': ') | list }}"
+  when: unifi_settings | length > 0

@@ -4,7 +4,14 @@
 set -euo pipefail
 TITLE=${1:?title}; BODY=${2:-}
 REPO_DIR=$(git rev-parse --show-toplevel); BR=$(git -C "$REPO_DIR" branch --show-current)
-DEFAULT=$(git -C "$REPO_DIR" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|origin/||'); DEFAULT=${DEFAULT:-main}
+# `|| DEFAULT=` is load-bearing. refs/remotes/origin/HEAD is set by `git clone`, but
+# NOT by `git init` + `git remote add`, and it is absent in both of this project's
+# clones. Without the guard, `set -euo pipefail` turns that miss into a silent exit
+# 128 on this line -- before the ${DEFAULT:-main} fallback below can ever run, which
+# defeats the fallback's whole purpose. `git remote set-head origin -a` repairs the
+# ref, but the script must not depend on someone having done that.
+DEFAULT=$(git -C "$REPO_DIR" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|origin/||') || DEFAULT=
+DEFAULT=${DEFAULT:-main}
 [ "$BR" = "$DEFAULT" ] && { echo "mhl-pr: on the default branch — create a feature branch first" >&2; exit 1; }
 [ -n "$(git -C "$REPO_DIR" status --porcelain)" ] && { echo "mhl-pr: uncommitted changes" >&2; exit 1; }
 git -C "$REPO_DIR" push -u origin "$BR" >/dev/null

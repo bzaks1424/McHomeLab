@@ -3,8 +3,8 @@
 # Invoked as: mhl-vault-client --vault-id <label>; prints the password to stdout.
 # Installed to ~/.mhl/bin/ by the controller role; source of truth is this file.
 # Design: research/RESEARCH_SECRETS_RA.md §6.3. The 0600 mode check turns a
-# silent security regression into a red run. MHL_VAULT_PASS_FILE is the seam
-# for a future systemd LoadCredential= delivery (deferred, Q4).
+# silent security regression into a red run. MHL_VAULT_PASS_FILE remains the seam
+# for a future systemd LoadCredential= delivery (deferred, Q4) and still wins.
 set -euo pipefail
 label="default"
 while [ $# -gt 0 ]; do
@@ -14,11 +14,18 @@ while [ $# -gt 0 ]; do
     *) shift ;;
   esac
 done
+# Resolution order, most explicit first. mckeyring is the estate's one credential
+# store (2026-09-04); ~/.mhl/vault/mhl.pass is the retired location, kept as a
+# fallback so a controller restored from an older escrow still unlocks.
+keyring_dir="${MCKEYRING_DIR:-$HOME/.local/state/mckeyring/secrets}"
 case "$label" in
-  mhl) store="${MHL_VAULT_PASS_FILE:-$HOME/.mhl/vault/mhl.pass}" ;;
+  mhl)
+    if [ -n "${MHL_VAULT_PASS_FILE:-}" ]; then store="$MHL_VAULT_PASS_FILE"
+    elif [ -r "$keyring_dir/mhl_vault_pass" ]; then store="$keyring_dir/mhl_vault_pass"
+    else store="$HOME/.mhl/vault/mhl.pass"; fi ;;
   *) echo "mhl-vault-client: unknown vault-id '$label'" >&2; exit 1 ;;
 esac
-[ -r "$store" ] || { echo "mhl-vault-client: cannot read $store" >&2; exit 1; }
+[ -r "$store" ] || { echo "mhl-vault-client: cannot read $store (tried \$MHL_VAULT_PASS_FILE, $keyring_dir/mhl_vault_pass, then $HOME/.mhl/vault/mhl.pass)" >&2; exit 1; }
 perm=$(stat -c '%a' "$store")
 [ "$perm" = "600" ] || { echo "mhl-vault-client: $store is mode $perm, want 600" >&2; exit 1; }
 printf '%s' "$(cat "$store")"

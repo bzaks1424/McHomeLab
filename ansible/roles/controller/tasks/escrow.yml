@@ -1,6 +1,6 @@
 ---
-# Vault escrow (Mike, 2026-08-26): mirror ~/.mhl/vault (vault password, backup
-# passphrase, API tokens) into the Google-Drive-synced Keys folder so the
+# Vault escrow (Mike, 2026-08-26; retargeted to mckeyring 2026-09-04): mirror the
+# credential store (vault password, backup passphrase, API tokens, agent secrets) into the Google-Drive-synced Keys folder so the
 # controller can be rebuilt from the safe. Hourly cron in the controller user's
 # crontab plus one immediate sync. Declared in hosts.yml on the controller:
 #   vault_escrow_dir: "/media/Backups/UserData/gdrive/Projects/Home Tech/Keys/MHL vault"
@@ -20,7 +20,7 @@
 
 - name: "Vault escrow: source must hold the expected files (a rebuilt controller must not mirror an empty vault)"
   ansible.builtin.stat:
-    path: "{{ controller_mhl_home }}/vault/{{ item }}"
+    path: "{{ controller_mckeyring_dir }}/{{ item }}"
   loop: "{{ controller_vault_escrow_required }}"
   register: _escrow_src
   become: false
@@ -28,7 +28,7 @@
 - name: "Vault escrow: refuse to sync an incomplete vault"
   ansible.builtin.assert:
     that: _escrow_src.results | rejectattr('stat.exists') | list | length == 0
-    fail_msg: "ESCROW: missing in {{ controller_mhl_home }}/vault: {{ _escrow_src.results | rejectattr('stat.exists') | map(attribute='item') | list }} — restore them from the safe before syncing"
+    fail_msg: "ESCROW: missing in {{ controller_mckeyring_dir }}: {{ _escrow_src.results | rejectattr('stat.exists') | map(attribute='item') | list }} — restore them from the safe before syncing"
 
 - name: "Vault escrow directory"
   ansible.builtin.file:

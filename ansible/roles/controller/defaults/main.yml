@@ -35,11 +35,15 @@ controller_vault_escrow_mount: "/{{ controller_vault_escrow_dir.split('/')[1:3] 
 # -rti: recursive, times, itemized (no owner/perm/group — the destination is a shared export)
 # Append-only on purpose: never --delete (a rebuilt controller with a near-empty vault must not
 # wipe the Drive copy). The sync also refuses to run unless the source holds the expected files.
-controller_vault_escrow_required: ["mhl.pass", "backup.pass"]
-controller_vault_escrow_rsync: "rsync -rti {{ controller_mhl_home }}/vault/ {{ controller_vault_escrow_dir | quote }}/"
+# mckeyring (2026-09-04) is the estate's one credential store; the escrow now mirrors it
+# rather than ~/.mhl/vault, which closes the gap that the agent's own secrets were backed
+# up by nothing. The retired ~/.mhl/vault files are left in place, unmanaged, as a fallback.
+controller_mckeyring_dir: "{{ lookup('env', 'MCKEYRING_DIR') | default(lookup('env', 'HOME') ~ '/.local/state/mckeyring/secrets', true) }}"
+controller_vault_escrow_required: ["mhl_vault_pass", "mhl_backup_pass"]
+controller_vault_escrow_rsync: "rsync -rti {{ controller_mckeyring_dir }}/ {{ controller_vault_escrow_dir | quote }}/"
 # The cron line guards the mount itself; the play guards it with its own task before syncing.
 controller_vault_escrow_cmd: >-
   mountpoint -q {{ controller_vault_escrow_mount | quote }}
-  && test -s {{ controller_mhl_home }}/vault/mhl.pass
-  && test -s {{ controller_mhl_home }}/vault/backup.pass
+  && test -s {{ controller_mckeyring_dir }}/mhl_vault_pass
+  && test -s {{ controller_mckeyring_dir }}/mhl_backup_pass
   && {{ controller_vault_escrow_rsync }}

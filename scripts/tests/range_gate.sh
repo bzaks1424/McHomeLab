@@ -43,5 +43,20 @@ ck "clean range passes"                    0 "$("$GATE" --range 'HEAD~1..HEAD' "
 ck "bad range fails closed"                1 "$("$GATE" --range 'nope..nope' "$T" >/dev/null 2>&1; echo $?)"
 ck "non-repo fails closed"                 1 "$("$GATE" --range 'a..b' /tmp >/dev/null 2>&1; echo $?)"
 
+# An EXTENSIONLESS file must be scanned. The first cut of --range used an extension
+# allowlist and silently skipped four of the five files in the commit that introduced it,
+# because nearly every script in this repo has no extension. Regression guard.
+git -C "$T" commit -q --allow-empty -m spacer
+SPACER=$(git -C "$T" rev-parse HEAD)
+printf -- '-----BEGIN RSA PRIVATE KEY-----\nFAKEEXTENSIONLESSFIXTURE\n-----END RSA PRIVATE KEY-----\n' > "$T/somescript"  # no-secret: synthetic fixture, no key material
+git -C "$T" add somescript; git -C "$T" commit -q -m "extensionless leak"
+git -C "$T" rm -q somescript; git -C "$T" commit -q -m "remove"
+ck "extensionless file is scanned"         1 "$("$GATE" --range "$SPACER..HEAD" "$T" >/dev/null 2>&1; echo $?)"
+
+# A binary blob must not break the scan.
+printf 'BIN\000\001\002DATA' > "$T/blob.bin"
+git -C "$T" add blob.bin; git -C "$T" commit -q -m binary
+ck "binary blob does not break it"         0 "$("$GATE" --range 'HEAD~1..HEAD' "$T" >/dev/null 2>&1; echo $?)"
+
 printf '  %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

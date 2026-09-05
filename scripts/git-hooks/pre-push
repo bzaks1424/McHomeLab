@@ -3,9 +3,27 @@
 # protect a private main, so this is the enforcement for McHomeLab-Inventory.
 # Activated by `git config core.hooksPath scripts/git-hooks` in each repo (set by hand;
 # the former installer lives in archive/governance-hooks). Still live 2026-08-26.
+# Backstop for the secrets gate (INBOX-073). mhl-pr scans before it pushes, but a bare
+# `git push` bypasses mhl-pr entirely, so the same check lives here too. Never let a
+# stronger guarantee rest on a weaker layer: this is the layer every push goes through.
+REPO=$(git rev-parse --show-toplevel 2>/dev/null)
+GATE="$REPO/scripts/mhl-no-secrets"
+ZERO=0000000000000000000000000000000000000000
+
 while read -r local_ref local_sha remote_ref remote_sha; do
   case "$remote_ref" in
     refs/heads/main|refs/heads/master) echo "pre-push: refusing push to $remote_ref — open a pull request instead." >&2; exit 1 ;;
   esac
+  [ "$local_sha" = "$ZERO" ] && continue          # branch deletion: nothing to scan
+  [ -x "$GATE" ] || { echo "pre-push: refusing — $GATE missing or not executable" >&2; exit 1; }
+  if [ "$remote_sha" = "$ZERO" ]; then            # new branch: scan back to the default branch
+    base=$(git rev-parse --verify -q origin/main || git rev-parse --verify -q origin/master) || {
+      echo "pre-push: WARNING no origin/main or origin/master locally; history NOT scanned" >&2; continue; }
+    range="$base..$local_sha"
+  else
+    range="$remote_sha..$local_sha"
+  fi
+  "$GATE" --range "$range" "$REPO" >&2 || {
+    echo "pre-push: refusing — secrets gate failed on $range" >&2; exit 1; }
 done
 exit 0

@@ -6,7 +6,7 @@ INVENTORY := ansible/inventory/test.yml
 INVENTORY_REPO := $(wildcard ../McHomeLab-Inventory)
 INVENTORY_REAL := ../McHomeLab-Inventory/hosts.yml
 
-.PHONY: ci deps lint yamllint ansible-lint syntax check render render-real no-secrets no-secrets-all secrets-matrix unit restore-test validate test
+.PHONY: ci deps lint yamllint ansible-lint syntax check render render-real no-secrets no-secrets-all range-gate secrets-matrix unit restore-test validate test
 
 deps:
 	cd ansible && ../$(VENV)/ansible-galaxy collection install -r requirements.yml -p ./collections --force
@@ -41,6 +41,11 @@ render:
 no-secrets:
 	scripts/mhl-no-secrets .
 
+# INBOX-073: proves the tree scan misses a secret that lives only in an earlier commit,
+# and that --range catches it. Synthetic fixtures in a throwaway repo; no real secret.
+range-gate:
+	scripts/tests/range_gate.sh
+
 # Both repos (the inventory is vaulted; this is the cross-repo gate).
 no-secrets-all:
 	scripts/mhl-no-secrets
@@ -66,6 +71,6 @@ secrets-matrix:
 # no-secrets-all is a strict superset of no-secrets: it scans this repo AND the
 # inventory, which is the one that actually holds the secrets. `ci` keeps the
 # narrow form because it has no sibling checkout.
-validate: lint syntax render render-real no-secrets-all secrets-matrix unit
+validate: lint syntax render render-real no-secrets-all secrets-matrix unit range-gate
 
 test: validate restore-test

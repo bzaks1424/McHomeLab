@@ -14,6 +14,23 @@ DEFAULT=$(git -C "$REPO_DIR" symbolic-ref --short refs/remotes/origin/HEAD 2>/de
 DEFAULT=${DEFAULT:-main}
 [ "$BR" = "$DEFAULT" ] && { echo "mhl-pr: on the default branch — create a feature branch first" >&2; exit 1; }
 [ -n "$(git -C "$REPO_DIR" status --porcelain)" ] && { echo "mhl-pr: uncommitted changes" >&2; exit 1; }
+# INBOX-073: the secrets gate used to live only in `make validate`, and NOTHING in the
+# publish path required validate to have run. A branch committed without it reached
+# GitHub unscanned. Two scans, because they catch different things: the tree scan sees
+# the tip, the range scan sees every blob the branch touched — including a secret that
+# was committed and then removed, which the tree scan cannot see because it excludes .git.
+GATE="$REPO_DIR/scripts/mhl-no-secrets"
+[ -x "$GATE" ] || { echo "mhl-pr: refusing to push — $GATE missing or not executable" >&2; exit 1; }
+echo "mhl-pr: scanning the working tree for secrets…" >&2
+"$GATE" "$REPO_DIR" >&2 || { echo "mhl-pr: refusing to push — secrets gate failed on the working tree" >&2; exit 1; }
+if git -C "$REPO_DIR" rev-parse --verify -q "origin/$DEFAULT" >/dev/null; then
+  echo "mhl-pr: scanning every commit on this branch…" >&2
+  "$GATE" --range "origin/$DEFAULT..HEAD" "$REPO_DIR" >&2 \
+    || { echo "mhl-pr: refusing to push — secrets gate failed on branch history" >&2; exit 1; }
+else
+  echo "mhl-pr: WARNING origin/$DEFAULT not present locally; branch history NOT scanned" >&2
+fi
+
 git -C "$REPO_DIR" push -u origin "$BR" >/dev/null
 BACKEND=$(git -C "$REPO_DIR" config --get mhl.prBackend || echo github)
 case "$BACKEND" in
